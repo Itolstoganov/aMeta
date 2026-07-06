@@ -17,6 +17,11 @@ definitions:
     type: object
     default: {}
     properties:
+      bowtie2:
+        description: >-
+          bowtie2 indexing/alignment
+        type: boolean
+        default: true
       mapdamage:
         description: >-
           mapdamage analysis

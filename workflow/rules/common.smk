@@ -4,6 +4,7 @@ import subprocess as sp
 from pathlib import Path
 from snakemake.utils import validate, logger, min_version
 from snakemake.common import __version__ as snakemake_version
+from snakemake.exceptions import WorkflowError
 import packaging.version as pv
 import pandas as pd
 import contextlib
@@ -44,6 +45,16 @@ else:
 
 
 validate(config, schema="../schemas/config.schema.yaml")
+
+# mapDamage consumes the Bowtie2 BAM, so it cannot run without bowtie2.
+if not config["analyses"].get("bowtie2", True) and config["analyses"].get(
+    "mapdamage", True
+):
+    raise WorkflowError(
+        "analyses.bowtie2 is disabled but analyses.mapdamage is enabled; "
+        "mapDamage requires the Bowtie2 alignment. Set analyses.mapdamage: "
+        "false to skip Bowtie2 alignment."
+    )
 
 
 kw = {"sep": "\t" if config["samplesheet"].endswith(".tsv") else ","}
@@ -184,8 +195,9 @@ def multiqc_input(wildcards):
         "cutadapt": expand(
             "logs/CUTADAPT_ADAPTER_TRIMMING/{sample}.log", sample=SAMPLES
         ),
-        "bowtie2": expand("logs/BOWTIE2/{sample}.log", sample=SAMPLES),
     }
+    if config["analyses"].get("bowtie2", True):
+        d["bowtie2"] = expand("logs/BOWTIE2/{sample}.log", sample=SAMPLES)
     return d
 
 
