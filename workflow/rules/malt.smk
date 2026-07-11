@@ -4,7 +4,7 @@ rule Build_Malt_DB:
         seqids_project="results/MALT_DB/seqids.project",
         project_headers="results/MALT_DB/project.headers",
         project_fasta="results/MALT_DB/library.project.fna",
-        db=directory("results/MALT_DB/maltDB.dat"),
+        db=temp(directory("results/MALT_DB/maltDB.dat")),
     input:
         unique_taxids="results/KRAKENUNIQ_ABUNDANCE_MATRIX/unique_species_taxid_list.txt",
     params:
