@@ -31,12 +31,9 @@ df<-read.delim(paste0(out_dir,"/breadth_of_coverage"),header=FALSE,sep="\t")
 N_tiles<-100
 step=(max(df$V2)-min(df$V2))/N_tiles
 tiles<-c(0:N_tiles)*step
-V4<-vector()
-for(i in 1:length(tiles))
-{
-  df_temp<-df[df$V2>=tiles[i] & df$V2<tiles[i+1],]
-  V4<-append(V4,rep(sum(df_temp$V3>0)/length(df_temp$V3),dim(df_temp)[1]))
-}
+tile<-findInterval(df$V2,tiles)
+V4<-ave(as.numeric(df$V3>0),tile,FUN=mean)
+V4[tile>=length(tiles)]<-0
 V4[is.na(V4)]<-0
 df$V4<-V4
 plot(df$V4~df$V2,type="s",xlab="Genome position",ylab="Fraction of covered genome",main=paste0("Evenness of coverage: ",readLines(paste0(out_dir,"/name_list.txt"))," reference"))
