@@ -1,15 +1,11 @@
 rule Build_Malt_DB:
     output:
-        seqid2taxid_project="results/MALT_DB/seqid2taxid.project.map",
-        seqids_project="results/MALT_DB/seqids.project",
-        project_headers="results/MALT_DB/project.headers",
-        project_fasta="results/MALT_DB/library.project.fna",
         db=temp(directory("results/MALT_DB/maltDB.dat")),
     input:
-        unique_taxids="results/KRAKENUNIQ_ABUNDANCE_MATRIX/unique_species_taxid_list.txt",
+        # The FASTA subset is prepared by the shared Reference_Subset rule
+        # (workflow/rules/align.smk); this rule only runs malt-build on it.
+        project_fasta="results/REFERENCE_DB/library.project.fna",
     params:
-        seqid2taxid=config["malt_seqid2taxid_db"],
-        nt_fasta=config["malt_nt_fasta"],
         accession2taxid=config["malt_accession2taxid"],
     threads: 20
     log:

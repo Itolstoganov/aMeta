@@ -73,43 +73,47 @@ rule Bowtie2_Alignment:
 ## produces those two paths; no downstream rule needs to change.
 ## ---------------------------------------------------------------------------
 
+
+rule Reference_Subset:
+    """Subset the nt FASTA to the KrakenUniq-detected species (aligner-agnostic).
+
+    Shared reference preparation used by BOTH backends: Build_Malt_DB feeds this
+    subset to malt-build, and the read aligners index it directly. Defined
+    unconditionally so either profiler can depend on it. (This is the FASTA
+    subsetting that malt-build.py used to do inline.)
+    """
+    output:
+        seqid2taxid_project="results/REFERENCE_DB/seqid2taxid.project.map",
+        seqids_project="results/REFERENCE_DB/seqids.project",
+        project_headers="results/REFERENCE_DB/project.headers",
+        project_fasta="results/REFERENCE_DB/library.project.fna",
+    input:
+        unique_taxids="results/KRAKENUNIQ_ABUNDANCE_MATRIX/unique_species_taxid_list.txt",
+    params:
+        seqid2taxid=config["malt_seqid2taxid_db"],
+        nt_fasta=config["malt_nt_fasta"],
+    threads: 1
+    log:
+        "logs/REFERENCE_SUBSET/REFERENCE_SUBSET.log",
+    conda:
+        "../envs/aligner.yaml"
+    envmodules:
+        *config["envmodules"]["samtools"],
+    benchmark:
+        "benchmarks/REFERENCE_SUBSET/REFERENCE_SUBSET.benchmark.txt"
+    message:
+        "Reference_Subset: SUBSETTING NT FASTA TO KRAKENUNIQ-DETECTED SPECIES"
+    shell:
+        "grep -wFf {input.unique_taxids} {params.seqid2taxid} > {output.seqid2taxid_project}; "
+        "cut -f1 {output.seqid2taxid_project} > {output.seqids_project}; "
+        "grep -Ff {output.seqids_project} {params.nt_fasta} | sed 's/>//g' > {output.project_headers}; "
+        "seqtk subseq {params.nt_fasta} {output.project_headers} > {output.project_fasta} 2> {log}"
+
+
 if config.get("taxonomic_profiler", "malt") == "aligner_ngslca":
 
     _aligner = config.get("aligner", {})
     ALIGNER = _aligner.get("name", "strobealign")
-
-    rule Alignment_Build_DB:
-        """Subset the nt FASTA to the KrakenUniq-detected species (aligner-agnostic).
-
-        Mirrors the FASTA-subsetting done by Build_Malt_DB / scripts/malt-build.py,
-        but stops before malt-build: aligners index the plain FASTA themselves.
-        """
-        output:
-            seqid2taxid_project="results/ALIGNMENT_DB/seqid2taxid.project.map",
-            seqids_project="results/ALIGNMENT_DB/seqids.project",
-            project_headers="results/ALIGNMENT_DB/project.headers",
-            project_fasta="results/ALIGNMENT_DB/library.project.fna",
-        input:
-            unique_taxids="results/KRAKENUNIQ_ABUNDANCE_MATRIX/unique_species_taxid_list.txt",
-        params:
-            seqid2taxid=config["malt_seqid2taxid_db"],
-            nt_fasta=config["malt_nt_fasta"],
-        threads: 1
-        log:
-            "logs/ALIGNMENT_BUILD_DB/ALIGNMENT_BUILD_DB.log",
-        conda:
-            "../envs/aligner.yaml"
-        envmodules:
-            *config["envmodules"]["samtools"],
-        benchmark:
-            "benchmarks/ALIGNMENT_BUILD_DB/ALIGNMENT_BUILD_DB.benchmark.txt"
-        message:
-            "Alignment_Build_DB: SUBSETTING NT FASTA TO KRAKENUNIQ-DETECTED SPECIES"
-        shell:
-            "grep -wFf {input.unique_taxids} {params.seqid2taxid} > {output.seqid2taxid_project}; "
-            "cut -f1 {output.seqid2taxid_project} > {output.seqids_project}; "
-            "grep -Ff {output.seqids_project} {params.nt_fasta} | sed 's/>//g' > {output.project_headers}; "
-            "seqtk subseq {params.nt_fasta} {output.project_headers} > {output.project_fasta} 2> {log}"
 
     if ALIGNER == "strobealign":
 
@@ -166,7 +170,7 @@ if config.get("taxonomic_profiler", "malt") == "aligner_ngslca":
                 namesorted_bam="results/ALIGNMENT/{sample}.trimmed.namesorted.bam",
             input:
                 fastq="results/CUTADAPT_ADAPTER_TRIMMING/{sample}.trimmed.fastq.gz",
-                ref="results/ALIGNMENT_DB/library.project.fna",
+                ref="results/REFERENCE_DB/library.project.fna",
                 binary=STROBEALIGN_BIN,
             params:
                 sam="results/ALIGNMENT/{sample}.trimmed.sam",
