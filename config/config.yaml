@@ -29,6 +29,11 @@ aligner:
   args: "--ancient-dna --mcs=always -S 0.95 -r 30 -k 12"
   max_secondary: 20
 
+# ngsLCA read-filtering args (aligner_ngslca path). Similarity-score mode;
+# 0.85 ~ MALT's -mpi 85. Edit-distance mode also works, e.g.
+# "-editdistmin 0 -editdistmax 5".
+ngslca_args: "-simscorelow 0.85 -simscorehigh 1.0"
+
 # Breadth and depth of coverage filters    
 n_unique_kmers: 1000
 n_tax_reads: 200

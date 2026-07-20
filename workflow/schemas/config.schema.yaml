@@ -124,6 +124,13 @@ properties:
         description: >-
           Number of secondary alignments to retain (strobealign -N), so ngsLCA
           can compute the LCA across all references a read maps to.
+  ngslca_args:
+    type: string
+    default: "-simscorelow 0.85 -simscorehigh 1.0"
+    description: >-
+      Filtering arguments passed to ngsLCA. Similarity-score mode is used by
+      default (0.85 ~ MALT's -mpi 85). Edit-distance mode (e.g.
+      "-editdistmin 0 -editdistmax 5") is also supported.
   krona_db:
     type: string
     description: >-
