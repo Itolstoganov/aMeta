@@ -64,37 +64,81 @@ rule Make_Node_List:
         "awk -v var={wildcards.taxid} '{{ if($1==var) print $0 }}' {params.tax_db}/taxDB | cut -f3 > {output.node_list}"
 
 
-checkpoint Malt_Extract:
-    """Convert rma6 output to misc usable formats.
+## The "extract" step converts per-read alignments + taxonomy into the per-taxon
+## MaltExtract_output/ tables that score.R and authentic.R consume. It is a
+## checkpoint so its completion re-triggers get_ref_id resolution. Exactly one of
+## the two implementations below is defined, selected by taxonomic_profiler; both
+## emit identical output paths so everything downstream is unchanged.
+if config.get("taxonomic_profiler", "malt") == "malt":
 
-    Downstream rules requires MaltExtract having been run.
-    Therefore this rule is a checkpoint that will trigger reevaluation
-    of downstream rules. The aggregation is performed by
-    aggregate_maltextract.
+    checkpoint Malt_Extract:
+        """Convert rma6 output to misc usable formats.
 
-    """
-    input:
-        rma6="results/MALT/{sample}.trimmed.rma6",
-        node_list="results/AUTHENTICATION/{sample}/{taxid}/node_list.txt",
-        ncbi_db_tre=os.path.join(config["ncbi_db"], "ncbi.tre"),
-        ncbi_db_map=os.path.join(config["ncbi_db"], "ncbi.map"),
-    output:
-        maltextractlog="results/AUTHENTICATION/{sample}/{taxid}/MaltExtract_output/log.txt",
-        nodeentries="results/AUTHENTICATION/{sample}/{taxid}/MaltExtract_output/default/readDist/{sample}.trimmed.rma6_additionalNodeEntries.txt",
-    params:
-        ncbi_db=lambda wildcards, input: os.path.dirname(input.ncbi_db_tre),
-        extract=format_maltextract_output_directory,
-    threads: 4
-    log:
-        "logs/MALT_EXTRACT/{sample}_{taxid}.log",
-    conda:
-        "../envs/malt.yaml"
-    envmodules:
-        *config["envmodules"]["malt"],
-    message:
-        "Malt_Extract: RUNNING MALT EXTRACT FOR SAMPLE {input.rma6}"
-    shell:
-        "time MaltExtract -Xmx32G -i {input.rma6} -f def_anc -o {params.extract} -r {params.ncbi_db} --reads --destackingOff --downSampOff --dupRemOff --threads {threads} --matches --minPI 85.0 --maxReadLength 0 --minComp 0.0 --meganSummary -t {input.node_list} -v 2> {log}"
+        Downstream rules requires MaltExtract having been run.
+        Therefore this rule is a checkpoint that will trigger reevaluation
+        of downstream rules. The aggregation is performed by
+        aggregate_maltextract.
+
+        """
+        input:
+            rma6="results/MALT/{sample}.trimmed.rma6",
+            node_list="results/AUTHENTICATION/{sample}/{taxid}/node_list.txt",
+            ncbi_db_tre=os.path.join(config["ncbi_db"], "ncbi.tre"),
+            ncbi_db_map=os.path.join(config["ncbi_db"], "ncbi.map"),
+        output:
+            maltextractlog="results/AUTHENTICATION/{sample}/{taxid}/MaltExtract_output/log.txt",
+            nodeentries="results/AUTHENTICATION/{sample}/{taxid}/MaltExtract_output/default/readDist/{sample}.trimmed.rma6_additionalNodeEntries.txt",
+        params:
+            ncbi_db=lambda wildcards, input: os.path.dirname(input.ncbi_db_tre),
+            extract=format_maltextract_output_directory,
+        threads: 4
+        log:
+            "logs/MALT_EXTRACT/{sample}_{taxid}.log",
+        conda:
+            "../envs/malt.yaml"
+        envmodules:
+            *config["envmodules"]["malt"],
+        message:
+            "Malt_Extract: RUNNING MALT EXTRACT FOR SAMPLE {input.rma6}"
+        shell:
+            "time MaltExtract -Xmx32G -i {input.rma6} -f def_anc -o {params.extract} -r {params.ncbi_db} --reads --destackingOff --downSampOff --dupRemOff --threads {threads} --matches --minPI 85.0 --maxReadLength 0 --minComp 0.0 --meganSummary -t {input.node_list} -v 2> {log}"
+
+else:
+
+    checkpoint NgsLCA_Extract:
+        """ngsLCA-path replacement for MaltExtract.
+
+        Builds the same per-taxon MaltExtract_output/ tables that score.R and
+        authentic.R read, but from the aligner's name-sorted BAM plus the ngsLCA
+        .lca assignment (see scripts/ngslca_extract.py). Like Malt_Extract it is a
+        checkpoint, and it writes the additionalNodeEntries file that get_ref_id
+        parses to recover the top reference id.
+        """
+        input:
+            bam="results/ALIGNMENT/{sample}.trimmed.namesorted.bam",
+            lca="results/NGSLCA/{sample}.lca",
+            node_list="results/AUTHENTICATION/{sample}/{taxid}/node_list.txt",
+            ref_fasta=config["malt_nt_fasta"],
+            ref_fai=f"{config['malt_nt_fasta']}.fai",
+        output:
+            maltextractlog="results/AUTHENTICATION/{sample}/{taxid}/MaltExtract_output/log.txt",
+            nodeentries="results/AUTHENTICATION/{sample}/{taxid}/MaltExtract_output/default/readDist/{sample}.trimmed.rma6_additionalNodeEntries.txt",
+        params:
+            extract=format_maltextract_output_directory,
+            exe=WORKFLOW_DIR / "scripts/ngslca_extract.py",
+            rma6_basename="{sample}.trimmed.rma6",
+        threads: 1
+        log:
+            "logs/NGSLCA_EXTRACT/{sample}_{taxid}.log",
+        conda:
+            "../envs/ngslca.yaml"
+        message:
+            "NgsLCA_Extract: BUILDING AUTHENTICATION TABLES FOR SAMPLE {input.bam} TAXID {wildcards.taxid}"
+        shell:
+            "python {params.exe} --bam {input.bam} --lca {input.lca} "
+            "--taxid {wildcards.taxid} --node-list {input.node_list} "
+            "--ref-fasta {input.ref_fasta} --out-dir {params.extract} "
+            "--rma6-basename {params.rma6_basename} 2> {log}"
 
 
 rule Post_Processing:
@@ -139,7 +183,7 @@ rule Samtools_Faidx:
 
 rule Breadth_Of_Coverage:
     input:
-        sam="results/MALT/{sample}.trimmed.sam.gz",
+        sam=auth_alignment_sam,
         malt_fasta=config["malt_nt_fasta"],
         malt_fasta_fai=f"{config['malt_nt_fasta']}.fai",
         nodeentries="results/AUTHENTICATION/{sample}/{taxid}/MaltExtract_output/default/readDist/{sample}.trimmed.rma6_additionalNodeEntries.txt",
@@ -258,7 +302,6 @@ rule Deamination:
 
 rule Authentication_Score:
     input:
-        rma6="results/MALT/{sample}.trimmed.rma6",
         maltextractlog="results/AUTHENTICATION/{sample}/{taxid}/MaltExtract_output/log.txt",
         name_list="results/AUTHENTICATION/{sample}/{taxid}/name_list.txt",
         scores="results/AUTHENTICATION/{sample}/{taxid}/PMDscores.txt",
@@ -268,6 +311,10 @@ rule Authentication_Score:
         "Authentication_Score: COMPUTING AUTHENTICATION SCORES"
     params:
         exe=WORKFLOW_DIR / "scripts/score.R",
+        # score.R uses only the basename of its first arg to build the
+        # MaltExtract table filenames; the rma6 file itself is never read, so we
+        # pass the conventional basename (works for both profilers).
+        rma6_basename="{sample}.trimmed.rma6",
     log:
         "logs/AUTHENTICATION_SCORE/{sample}_{taxid}.log",
     threads: 1
@@ -276,4 +323,4 @@ rule Authentication_Score:
     envmodules:
         *config["envmodules"]["malt"],
     shell:
-        "Rscript {params.exe} {input.rma6} $(dirname {input.maltextractlog}) {input.name_list} $(dirname {input.name_list}) {input.scores} &> {log};"
+        "Rscript {params.exe} {params.rma6_basename} $(dirname {input.maltextractlog}) {input.name_list} $(dirname {input.name_list}) {input.scores} &> {log};"

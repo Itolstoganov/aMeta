@@ -166,6 +166,10 @@ def authentication_input(wildcards):
 
 
 def malt_input(wildcards):
+    # The aligner_ngslca profiler produces its own abundance matrix instead of
+    # the MALT ones (and does not run MALT at all).
+    if config.get("taxonomic_profiler", "malt") == "aligner_ngslca":
+        return ("results/NGSLCA_ABUNDANCE_MATRIX/ngslca_abundance_matrix.txt",)
     if not config["analyses"]["malt"]:
         return []
     return (
@@ -259,6 +263,14 @@ def aggregate_scores(wildcards):
 def aggregate_post(wildcards):
     fmt = "results/AUTHENTICATION/{sample}/{taxid}/MaltExtract_output/analysis.RData"
     return _aggregate_utils(fmt, wildcards)
+
+def auth_alignment_sam(wildcards):
+    """SAM (accession/tax RNAME space) feeding the authentication path: the MALT
+    SAM for the 'malt' profiler, otherwise the aligner's canonical SAM."""
+    if config.get("taxonomic_profiler", "malt") == "malt":
+        return f"results/MALT/{wildcards.sample}.trimmed.sam.gz"
+    return f"results/ALIGNMENT/{wildcards.sample}.trimmed.sam.gz"
+
 
 def get_ref_id(wildcards):
     """Return reference id for a given taxonomy id"""
