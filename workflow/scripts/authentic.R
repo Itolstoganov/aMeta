@@ -32,13 +32,19 @@ N_tiles<-100
 step=(max(df$V2)-min(df$V2))/N_tiles
 tiles<-c(0:N_tiles)*step
 tile<-findInterval(df$V2,tiles)
-V4<-ave(as.numeric(df$V3>0),tile,FUN=mean)
-V4[tile>=length(tiles)]<-0
-V4[is.na(V4)]<-0
-df$V4<-V4
-plot(df$V4~df$V2,type="s",xlab="Genome position",ylab="Fraction of covered genome",main=paste0("Evenness of coverage: ",readLines(paste0(out_dir,"/name_list.txt"))," reference"))
+covered<-as.numeric(df$V3>0)
+# The per-base fraction is constant within each tile, so plot one point per
+# tile (~N_tiles points) instead of one per genome position. Plotting every
+# base produced a huge vector PDF that was slow to write and slow to rasterize.
+tile_frac<-tapply(covered,tile,FUN=mean)
+tile_ids<-as.integer(names(tile_frac))
+x_tile<-(tile_ids-0.5)*step
+y_tile<-as.numeric(tile_frac)
+y_tile[tile_ids>=length(tiles)]<-0
+y_tile[is.na(y_tile)]<-0
+plot(y_tile~x_tile,type="s",xlab="Genome position",ylab="Fraction of covered genome",main=paste0("Evenness of coverage: ",readLines(paste0(out_dir,"/name_list.txt"))," reference"))
 abline(h=0,col="red",lty=2)
-mtext(paste0("Breadth of coverage: ",round((sum(df$V3>0)/length(df$V3))*100,2),"% of genome covered"),cex=0.8)
+mtext(paste0("Breadth of coverage: ",round((sum(covered)/length(covered))*100,2),"% of genome covered"),cex=0.8)
 
 #DAMAGE PATTERN
 dam <- read.table(paste0(MaltExtract_output_path,"/default/damageMismatch/",RMA6,"_damageMismatch.txt"),header=T,row.names=1,check.names=F,stringsAsFactors=F,comment.char='')
@@ -53,13 +59,17 @@ axis(1, at=seq(1,20,2), labels=c(seq(1,10,2),seq(-10,-1,2)))
 
 #READ LENGTH DISTRIBUTION
 df<-as.numeric(scan(paste0(out_dir,"/read_length.txt"),what="character"))
-hist(df,breaks=length(df),xlab="Read length",main="Read length distribution")
+# One bin per integer read length instead of one bin per read (which drew
+# hundreds of thousands of invisible bars).
+rl_breaks<-seq(floor(min(df))-0.5,ceiling(max(df))+0.5,by=1)
+hist(df,breaks=rl_breaks,xlab="Read length",main="Read length distribution")
 
 #PMD SCORES DISTRIBUTION
 if(file.info(paste0(out_dir,"/PMDscores.txt"))$size!=0)
 {
 df<-read.delim(paste0(out_dir,"/PMDscores.txt"),header=FALSE,sep="\t")
-hist(df$V4,breaks=length(df$V4),main="Histogram of PMD scores",xlab="PMDscores")
+# Fixed bin count instead of one bin per read.
+hist(df$V4,breaks=100,main="Histogram of PMD scores",xlab="PMDscores")
 abline(v=3,col="red",lty=2)
 }else{
 plot(c(0, 1), c(0, 1), ann = F, bty = 'n', type = 'n', main="Histogram of PMD scores")
