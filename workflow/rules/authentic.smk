@@ -205,7 +205,11 @@ rule Breadth_Of_Coverage:
         *config["envmodules"]["malt"],
     shell:
         "echo {params.ref_id} > {output.name_list}; "
-        "zgrep {params.ref_id} {input.sam} | uniq > {output.sam}; "
+        # Keep only records whose RNAME is ref_id
+        "zcat -f {input.sam} | awk -v ref=\"{params.ref_id}\" 'BEGIN{{FS=OFS=\"\\t\"}} "
+        "/^@SQ/{{sn=$2; sub(/^SN:/,\"\",sn); acc=sn; sub(/\\|.*/,\"\",acc); if(acc==ref) print; next}} "
+        "/^@/{{print; next}} "
+        "{{rn=$3; sub(/\\|.*/,\"\",rn); if(rn==ref) print}}' | uniq > {output.sam}; "
         "samtools view -bS {output.sam} > results/AUTHENTICATION/{wildcards.sample}/{wildcards.taxid}/{params.ref_id}.bam; "
         "samtools sort results/AUTHENTICATION/{wildcards.sample}/{wildcards.taxid}/{params.ref_id}.bam > {output.sorted_bam}; "
         "samtools index {output.sorted_bam}; "
