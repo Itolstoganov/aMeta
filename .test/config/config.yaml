@@ -27,6 +27,15 @@ malt_nt_fasta: resources/ref.fa
 malt_accession2taxid: resources/accession2taxid.map
 ncbi_db: resources/ncbi
 
+# Alignment + taxonomy backend (malt = classic aMeta; aligner_ngslca = aligner + ngsLCA).
+taxonomic_profiler: malt
+aligner:
+  name: strobealign
+  repo: "https://github.com/ksahlin/strobealign"
+  ref: "cc24cbd434f4ea7dd3c7fd344e3aaaf774cf4c13"
+  args: "--ancient-dna --mcs=always -S 0.95 -r 30 -k 12"
+  max_secondary: 20
+
 # Breadth and depth of coverage filters
 n_unique_kmers: 1000
 n_tax_reads: 200

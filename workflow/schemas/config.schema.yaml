@@ -80,6 +80,50 @@ properties:
     type: string
     description: >-
       taxonomy from NCBI
+  taxonomic_profiler:
+    type: string
+    enum:
+      - malt
+      - aligner_ngslca
+    default: malt
+    description: >-
+      Which alignment + taxonomy backend to use. 'malt' (default) uses MALT for
+      both alignment and LCA taxonomy (rma6). 'aligner_ngslca' replaces MALT with
+      a pluggable read aligner (see the 'aligner' block) plus ngsLCA taxonomy.
+  aligner:
+    type: object
+    default: {}
+    description: >-
+      Read aligner configuration, used when taxonomic_profiler is 'aligner_ngslca'.
+    properties:
+      name:
+        type: string
+        default: strobealign
+        description: >-
+          Aligner to use. Supported: strobealign. New aligners are added as
+          guarded rule blocks in workflow/rules/align.smk.
+      repo:
+        type: string
+        default: "https://github.com/ksahlin/strobealign"
+        description: >-
+          Git repository whose GitHub archive is downloaded and compiled from
+          source (the aDNA strobealign is a Rust build not available on conda).
+      ref:
+        type: string
+        default: "cc24cbd434f4ea7dd3c7fd344e3aaaf774cf4c13"
+        description: >-
+          Commit hash or branch to build (github.com/<repo>/archive/<ref>.zip).
+      args:
+        type: string
+        default: "--ancient-dna --mcs=always -S 0.95 -r 30 -k 12"
+        description: >-
+          Extra command-line arguments passed to the aligner.
+      max_secondary:
+        type: integer
+        default: 20
+        description: >-
+          Number of secondary alignments to retain (strobealign -N), so ngsLCA
+          can compute the LCA across all references a read maps to.
   krona_db:
     type: string
     description: >-

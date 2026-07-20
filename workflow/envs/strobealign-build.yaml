@@ -1,0 +1,10 @@
+channels:
+  - conda-forge
+  - bioconda
+
+dependencies:
+  - rust
+  - wget
+  - unzip
+  - zlib
+  - pkg-config

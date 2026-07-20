@@ -15,6 +15,20 @@ malt_nt_fasta: resources/maltntfasta
 malt_accession2taxid: resources/malt_acc2tax
 ncbi_db: resources/ncbi
 
+# Alignment + taxonomy backend.
+#   malt           MALT does both alignment and LCA taxonomy (default; classic aMeta).
+#   aligner_ngslca a pluggable read aligner (see `aligner`) + ngsLCA taxonomy.
+taxonomic_profiler: malt
+
+# Aligner used when taxonomic_profiler == aligner_ngslca. The aDNA strobealign
+# (--ancient-dna) is a Rust build compiled from source at the given commit/branch.
+aligner:
+  name: strobealign
+  repo: "https://github.com/ksahlin/strobealign"
+  ref: "cc24cbd434f4ea7dd3c7fd344e3aaaf774cf4c13"
+  args: "--ancient-dna --mcs=always -S 0.95 -r 30 -k 12"
+  max_secondary: 20
+
 # Breadth and depth of coverage filters    
 n_unique_kmers: 1000
 n_tax_reads: 200
