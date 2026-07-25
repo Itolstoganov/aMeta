@@ -117,8 +117,8 @@ if NGSLCA_PROFILERS:
             bam="results/ALIGNMENT/{sample}.trimmed.namesorted.bam",
             lca="results/NGSLCA/{sample}.lca",
             node_list="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/node_list.txt",
-            ref_fasta=config["malt_nt_fasta"],
-            ref_fai=f"{config['malt_nt_fasta']}.fai",
+            ref_fasta="results/REFERENCE_DB/library.project.fna",
+            ref_fai="results/REFERENCE_DB/library.project.fna.fai",
         output:
             maltextractlog="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/MaltExtract_output/log.txt",
             nodeentries="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/MaltExtract_output/default/readDist/{sample}.trimmed.rma6_additionalNodeEntries.txt",
