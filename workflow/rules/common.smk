@@ -114,6 +114,37 @@ if config["adapters"]["illumina"]:
 if config["adapters"]["nextera"]:
     ADAPTERS.append("CTGTCTCTTATA")
 
+##############################
+# Taxonomic profilers
+##############################
+#
+# One or more alignment + taxonomy backends may run together; each writes an
+# independent authentication tree under results/AUTHENTICATION/<profiler>/. A
+# profiler label is either "malt" (MALT alignment + LCA) or an aligner name
+# (aligner + ngsLCA). The scalar `taxonomic_profiler` is honoured for back-compat
+# when `profilers` is absent.
+PROFILERS = config.get("profilers")
+if not PROFILERS:
+    _tp = config.get("taxonomic_profiler", "malt")
+    if _tp == "malt":
+        PROFILERS = ["malt"]
+    else:  # legacy "aligner_ngslca": label the profiler by the aligner name
+        PROFILERS = [config.get("aligner", {}).get("name", "strobealign")]
+# aligner + ngsLCA profilers are every non-malt label.
+NGSLCA_PROFILERS = [p for p in PROFILERS if p != "malt"]
+# Only a single aligner is configured (one `aligner` block), so every ngsLCA
+# profiler label must name that aligner. Running several different aligners with
+# ngsLCA simultaneously would additionally need per-aligner ALIGNMENT/NGSLCA paths.
+_aligner_name = config.get("aligner", {}).get("name", "strobealign")
+_bad = [p for p in NGSLCA_PROFILERS if p != _aligner_name]
+if _bad:
+    raise WorkflowError(
+        f"profilers {_bad} are not 'malt' and do not match the configured "
+        f"aligner.name '{_aligner_name}'. Every non-malt profiler is an "
+        "aligner+ngsLCA backend and must equal aligner.name; only one aligner "
+        "can be configured at a time."
+    )
+
 
 ##############################
 # Wildcard constraints
@@ -123,6 +154,7 @@ if config["adapters"]["nextera"]:
 #
 wildcard_constraints:
     sample=f"({'|'.join(samples['sample'].tolist())})",
+    profiler=f"({'|'.join(PROFILERS)})",
 
 
 ##############################
@@ -162,23 +194,30 @@ def mapdamage_input(wildcards):
 def authentication_input(wildcards):
     if not config["analyses"]["authentication"]:
         return []
-    return expand("results/AUTHENTICATION/.{sample}_done", sample=SAMPLES)
+    return expand(
+        "results/AUTHENTICATION/{profiler}/.{sample}_done",
+        profiler=PROFILERS,
+        sample=SAMPLES,
+    )
 
 
 def malt_input(wildcards):
-    # The aligner_ngslca profiler produces its own abundance matrix instead of
-    # the MALT ones (and does not run MALT at all).
-    if config.get("taxonomic_profiler", "malt") == "aligner_ngslca":
-        return ("results/NGSLCA_ABUNDANCE_MATRIX/ngslca_abundance_matrix.txt",)
-    if not config["analyses"]["malt"]:
-        return []
-    return (
-        "results/MALT_ABUNDANCE_MATRIX_SAM/malt_abundance_matrix_sam.txt",
-        "results/MALT_ABUNDANCE_MATRIX_RMA6/malt_abundance_matrix_rma6.txt",
-    )
+    # Collect the abundance matrix of every configured profiler. Each backend has
+    # distinct output paths, so several can be produced in one run.
+    out = []
+    if "malt" in PROFILERS and config["analyses"]["malt"]:
+        out += [
+            "results/MALT_ABUNDANCE_MATRIX_SAM/malt_abundance_matrix_sam.txt",
+            "results/MALT_ABUNDANCE_MATRIX_RMA6/malt_abundance_matrix_rma6.txt",
+        ]
+    if NGSLCA_PROFILERS:
+        out += ["results/NGSLCA_ABUNDANCE_MATRIX/ngslca_abundance_matrix.txt"]
+    return out
 
 def summary_input(wildcards):
-    return "results/overview_heatmap_scores.pdf"
+    return expand(
+        "results/overview_heatmap_scores.{profiler}.pdf", profiler=PROFILERS
+    )
 
 def krona_input(wildcards):
     if not config["analyses"]["krona"]:
@@ -208,13 +247,14 @@ def multiqc_input(wildcards):
 def aggregate_maltextract(wildcards):
     """Collect maltextract output directories"""
     checkpoint_output = checkpoints.Create_Sample_TaxID_Directories.get(
-        sample=wildcards.sample
+        sample=wildcards.sample, profiler=wildcards.profiler
     ).output[0]
     taxid = glob_wildcards(
         os.path.join(os.path.dirname(checkpoint_output), "{taxid,[0-9]+}")
     ).taxid
     return expand(
-        "results/AUTHENTICATION/{sample}/{taxid}/MaltExtract_output/log.txt",
+        "results/AUTHENTICATION/{profiler}/{sample}/{taxid}/MaltExtract_output/log.txt",
+        profiler=wildcards.profiler,
         sample=wildcards.sample,
         taxid=taxid,
     )
@@ -228,46 +268,54 @@ def _aggregate_utils(fmt, wildcards):
     )
     res = []
     checkpoint_output = checkpoints.Create_Sample_TaxID_Directories.get(
-        sample=wildcards.sample
+        sample=wildcards.sample, profiler=wildcards.profiler
     ).output[0]
     taxid = glob_wildcards(
         os.path.join(os.path.dirname(checkpoint_output), "{taxid,[0-9]+}")
     ).taxid
+    profiler = []
     sample = []
     refid = []
     taxid_out = []
     for tid in taxid:
-        wc = Wildcards(fromdict={"sample": wildcards.sample, "taxid": tid})
+        wc = Wildcards(
+            fromdict={
+                "profiler": wildcards.profiler,
+                "sample": wildcards.sample,
+                "taxid": tid,
+            }
+        )
         _refid = get_ref_id(wc)
         if _refid is not None and _refid != tid:
             refid.append(_refid)
             taxid_out.append(tid)
             sample.append(wildcards.sample)
+            profiler.append(wildcards.profiler)
     if len(refid) > 0:
-        res = expand(fmt, zip, sample=sample, taxid=taxid_out)
+        res = expand(fmt, zip, profiler=profiler, sample=sample, taxid=taxid_out)
     return res
 
 
 def aggregate_PMD(wildcards):
-    fmt = "results/AUTHENTICATION/{sample}/{taxid}/PMD_plot.frag.pdf"
+    fmt = "results/AUTHENTICATION/{profiler}/{sample}/{taxid}/PMD_plot.frag.pdf"
     return _aggregate_utils(fmt, wildcards)
 
 def aggregate_plots(wildcards):
-    fmt = "results/AUTHENTICATION/{sample}/{taxid}/authentic_Sample_{sample}.trimmed.rma6_TaxID_{taxid}.pdf"
+    fmt = "results/AUTHENTICATION/{profiler}/{sample}/{taxid}/authentic_Sample_{sample}.trimmed.rma6_TaxID_{taxid}.pdf"
     return _aggregate_utils(fmt, wildcards)
 
 def aggregate_scores(wildcards):
-    fmt = "results/AUTHENTICATION/{sample}/{taxid}/authentication_scores.txt"
+    fmt = "results/AUTHENTICATION/{profiler}/{sample}/{taxid}/authentication_scores.txt"
     return _aggregate_utils(fmt, wildcards)
 
 def aggregate_post(wildcards):
-    fmt = "results/AUTHENTICATION/{sample}/{taxid}/MaltExtract_output/analysis.RData"
+    fmt = "results/AUTHENTICATION/{profiler}/{sample}/{taxid}/MaltExtract_output/analysis.RData"
     return _aggregate_utils(fmt, wildcards)
 
 def auth_alignment_sam(wildcards):
     """SAM (accession/tax RNAME space) feeding the authentication path: the MALT
     SAM for the 'malt' profiler, otherwise the aligner's canonical SAM."""
-    if config.get("taxonomic_profiler", "malt") == "malt":
+    if wildcards.profiler == "malt":
         return f"results/MALT/{wildcards.sample}.trimmed.sam.gz"
     return f"results/ALIGNMENT/{wildcards.sample}.trimmed.sam.gz"
 
@@ -275,7 +323,7 @@ def auth_alignment_sam(wildcards):
 def get_ref_id(wildcards):
     """Return reference id for a given taxonomy id"""
     ref_id = wildcards.taxid
-    infile = f"results/AUTHENTICATION/{wildcards.sample}/{wildcards.taxid}/MaltExtract_output/default/readDist/{wildcards.sample}.trimmed.rma6_additionalNodeEntries.txt"
+    infile = f"results/AUTHENTICATION/{wildcards.profiler}/{wildcards.sample}/{wildcards.taxid}/MaltExtract_output/default/readDist/{wildcards.sample}.trimmed.rma6_additionalNodeEntries.txt"
     if not os.path.exists(infile):
         logger.debug(f"No such file {infile}; cannot extract refid")
         return None
@@ -293,4 +341,4 @@ def get_ref_id(wildcards):
 
 def format_maltextract_output_directory(wildcards):
     """Format MaltExtract output directory name"""
-    return f"results/AUTHENTICATION/{wildcards.sample}/{wildcards.taxid}/MaltExtract_output/"
+    return f"results/AUTHENTICATION/{wildcards.profiler}/{wildcards.sample}/{wildcards.taxid}/MaltExtract_output/"

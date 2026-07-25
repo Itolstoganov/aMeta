@@ -15,18 +15,22 @@ malt_nt_fasta: resources/maltntfasta
 malt_accession2taxid: resources/malt_acc2tax
 ncbi_db: resources/ncbi
 
-# Alignment + taxonomy backend.
-#   malt           MALT does both alignment and LCA taxonomy (default; classic aMeta).
-#   aligner_ngslca a pluggable read aligner (see `aligner`) + ngsLCA taxonomy.
-taxonomic_profiler: malt
+# Alignment + taxonomy backend(s). One or more may be listed; each profiler
+# produces its own independent authentication tree under
+# results/AUTHENTICATION/<profiler>/, abundance matrix, and score heatmap.
+#   malt         MALT does both alignment and LCA taxonomy.
+#   <aligner>    a read aligner (see `aligner`) + ngsLCA taxonomy.
+profilers:
+  - malt
+  - strobealign
 
-# Aligner used when taxonomic_profiler == aligner_ngslca. The aDNA strobealign
+# Aligner used by any non-malt (aligner + ngsLCA) profiler. The aDNA strobealign
 # (--ancient-dna) is a Rust build compiled from source at the given commit/branch.
 aligner:
   name: strobealign
   repo: "https://github.com/ksahlin/strobealign"
   ref: "cc24cbd434f4ea7dd3c7fd344e3aaaf774cf4c13"
-  args: "--ancient-dna --mcs=always -S 0.95 -r 30 -k 12"
+  args: "--adna -k 17 -s 13 --ry-len 8 -M 500 --ssw -L 32"
   max_secondary: 20
 
 # ngsLCA read-filtering args (aligner_ngslca path). Similarity-score mode;

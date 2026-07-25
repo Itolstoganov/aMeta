@@ -60,8 +60,9 @@ rule Bowtie2_Alignment:
 ## ---------------------------------------------------------------------------
 ## Pluggable aligner framework (alternative to MALT alignment)
 ##
-## When config["taxonomic_profiler"] == "aligner_ngslca", a read aligner replaces
-## MALT's alignment step. The taxonomy is then assigned by ngsLCA (see ngslca.smk).
+## When any aligner+ngsLCA profiler is configured (NGSLCA_PROFILERS non-empty), a
+## read aligner replaces MALT's alignment step for that profiler. The taxonomy is
+## then assigned by ngsLCA (see ngslca.smk).
 ## Everything downstream of the aligner consumes two canonical, aligner-agnostic
 ## outputs, so the rest of the pipeline is unaware of which aligner produced them:
 ##
@@ -110,7 +111,7 @@ rule Reference_Subset:
         "seqtk subseq {params.nt_fasta} {output.project_headers} > {output.project_fasta} 2> {log}"
 
 
-if config.get("taxonomic_profiler", "malt") == "aligner_ngslca":
+if NGSLCA_PROFILERS:
 
     _aligner = config.get("aligner", {})
     ALIGNER = _aligner.get("name", "strobealign")
@@ -119,8 +120,8 @@ if config.get("taxonomic_profiler", "malt") == "aligner_ngslca":
 
         STROBEALIGN_REPO = _aligner.get("repo", "https://github.com/ksahlin/strobealign")
         STROBEALIGN_REF = _aligner.get("ref", "cc24cbd434f4ea7dd3c7fd344e3aaaf774cf4c13")
-        STROBEALIGN_ARGS = _aligner.get("args", "--ancient-dna --mcs=always -S 0.95 -r 30 -k 12")
-        STROBEALIGN_MAX_SECONDARY = _aligner.get("max_secondary", 20)
+        STROBEALIGN_ARGS = _aligner.get("args", "--adna -k 17 -s 13 --ry-len 8 -M 500 --ssw -L 32")
+        STROBEALIGN_MAX_SECONDARY = _aligner.get("max_secondary", 200)
         STROBEALIGN_BIN = f"resources/bin/strobealign/{STROBEALIGN_REF}"
 
         rule Compile_Strobealign:

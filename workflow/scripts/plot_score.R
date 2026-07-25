@@ -1,6 +1,10 @@
 #This is a script for plotting a heatmap overview of aMeta authentication scores.
 #Run this script as:
-#Rscript plot_score.R in_dir out_dir
+#Rscript plot_score.R in_dir out_dir [out_name]
+#
+#out_name is the basename (without extension) for the .txt/.pdf outputs and
+#defaults to "overview_heatmap_scores". It is used to keep per-profiler heatmaps
+#from colliding when several profilers write into the same out_dir.
 
 #in_dir<-"aMeta/results/AUTHENTICATION"
 #out_dir<-"aMeta/results"
@@ -8,6 +12,7 @@
 args = commandArgs(trailingOnly=TRUE)
 in_dir<-as.character(args[1])
 out_dir<-as.character(args[2])
+out_name<-if(length(args)>=3) as.character(args[3]) else "overview_heatmap_scores"
 
 samples<-list.files(in_dir)
 
@@ -43,7 +48,7 @@ score_matrix$ORGANISM<-NULL
 score_matrix[is.na(score_matrix)]<-0
 #score_matrix<-score_matrix[grepl("Homo sapiens",rownames(score_matrix))==FALSE,]
 score_matrix
-write.table(score_matrix,file=paste0(out_dir,"/overview_heatmap_scores.txt"),col.names=TRUE,row.names=TRUE,quote=FALSE,sep="\t")
+write.table(score_matrix,file=paste0(out_dir,"/",out_name,".txt"),col.names=TRUE,row.names=TRUE,quote=FALSE,sep="\t")
 
 
 #FUNCTION FOR TUNING FONTSIZE ON SCORE HEATMAP
@@ -56,7 +61,7 @@ my_fontsize<-function(score_matrix)
 }
 
 library("pheatmap")
-pdf(paste0(out_dir,"/overview_heatmap_scores.pdf"),paper="a4r",width=297,height=210)
+pdf(paste0(out_dir,"/",out_name,".pdf"),paper="a4r",width=297,height=210)
 if(is.null(dim(score_matrix))==FALSE)
 {
 if(dim(score_matrix)[1]>1 & dim(score_matrix)[2]>1)

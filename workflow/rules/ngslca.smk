@@ -1,4 +1,4 @@
-## ngsLCA taxonomy rules (used when config["taxonomic_profiler"] == "aligner_ngslca").
+## ngsLCA taxonomy rules (used when an aligner+ngsLCA profiler is configured).
 ##
 ## ngsLCA (https://github.com/miwipe/ngsLCA) assigns each read a lowest-common-
 ## ancestor taxid from a name-sorted BAM (produced by the aligner, see align.smk)
@@ -12,7 +12,7 @@
 ##   - -acc2tax reuses config["malt_accession2taxid"] (NCBI nucl_gb.accession2taxid);
 ##     the aligner's reference names are the FASTA accessions, which it keys on.
 
-if config.get("taxonomic_profiler", "malt") == "aligner_ngslca":
+if NGSLCA_PROFILERS:
 
     rule KrakenUniq_TaxDB_To_Dmp:
         """Convert the KrakenUniq taxDB into NCBI names.dmp/nodes.dmp for ngsLCA."""

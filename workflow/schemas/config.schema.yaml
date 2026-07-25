@@ -80,6 +80,17 @@ properties:
     type: string
     description: >-
       taxonomy from NCBI
+  profilers:
+    type: array
+    items:
+      type: string
+    description: >-
+      Alignment + taxonomy backend(s) to run. Each entry produces its own
+      independent authentication tree, abundance matrix and score heatmap.
+      'malt' uses MALT for both alignment and LCA taxonomy (rma6). Any other
+      label is an aligner + ngsLCA profiler and must equal aligner.name (e.g.
+      'strobealign'). When absent, the pipeline falls back to the deprecated
+      scalar 'taxonomic_profiler'.
   taxonomic_profiler:
     type: string
     enum:
@@ -87,9 +98,10 @@ properties:
       - aligner_ngslca
     default: malt
     description: >-
-      Which alignment + taxonomy backend to use. 'malt' (default) uses MALT for
-      both alignment and LCA taxonomy (rma6). 'aligner_ngslca' replaces MALT with
-      a pluggable read aligner (see the 'aligner' block) plus ngsLCA taxonomy.
+      DEPRECATED (use 'profilers'). Single alignment + taxonomy backend. 'malt'
+      uses MALT for both alignment and LCA taxonomy (rma6). 'aligner_ngslca'
+      replaces MALT with a pluggable read aligner (see the 'aligner' block) plus
+      ngsLCA taxonomy. Only consulted when 'profilers' is not set.
   aligner:
     type: object
     default: {}
