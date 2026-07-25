@@ -30,7 +30,7 @@ aligner:
   name: strobealign
   repo: "https://github.com/ksahlin/strobealign"
   ref: "cc24cbd434f4ea7dd3c7fd344e3aaaf774cf4c13"
-  args: "--adna -k 17 -s 13 --ry-len 8 -M 500 --ssw -L 32"
+  args: "--adna -k 17 -s 13 --ry-len 8 -M 500 --ssw -L 32 --secondary-seq"
   max_secondary: 20
 
 # ngsLCA read-filtering args (aligner_ngslca path). Similarity-score mode;

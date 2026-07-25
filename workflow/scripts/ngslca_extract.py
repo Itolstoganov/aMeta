@@ -10,9 +10,13 @@ they actually consume. Everything downstream (score.R, authentic.R,
 Breadth_Of_Coverage via get_ref_id) is therefore reused byte-for-byte.
 
 Reads "belong" to the taxid if the taxid appears anywhere in that read's ngsLCA
-lineage (i.e. the read resolved to this species or finer). The reference with the
-most such reads becomes the "top reference" (ref_id); metrics are computed over the
-member reads whose best alignment (lowest NM) is on ref_id.
+lineage (i.e. the read resolved to this species or finer). Like MALT, the
+per-read metrics (edit distance, damage, read length, identity) are aggregated over
+all such member reads at the node level, each contributing its lowest-NM
+alignment regardless of which of the species' accessions it landed on. A single
+"top reference" (ref_id) -- the target genome the most member reads aligned -- 
+is used only for the per-reference outputs (coverage/IGV and the
+TOPREFPERCREADS share), matching MaltExtract.
 
 Files written under <out_dir> (= .../MaltExtract_output/), with <B> = rma6 basename:
   log.txt
@@ -103,29 +107,39 @@ class ReadRecord:
 
 
 def scan_bam(bam_path, ref_fasta, members):
-    """Best (lowest-NM) alignment per member read. Returns {readid: ReadRecord}."""
+    """Scan the member reads' alignments.
+
+    Returns (best, any_on_ref):
+      best       = {readid: ReadRecord} of each member's best (lowest-NM) alignment.
+      any_on_ref = {ref: set(readid)} of every member read that has any alignment on
+                   a reference, used only to pick the top reference and its
+                   TOPREFPERCREADS share.
+    """
     best = {}
+    any_on_ref = {}
     fasta = pysam.FastaFile(ref_fasta)
     with pysam.AlignmentFile(bam_path, "rb", check_sq=False) as bam:
         for aln in bam:
             if aln.is_unmapped or aln.query_name not in members:
                 continue
+            qname = aln.query_name
+            ref = aln.reference_name
+            any_on_ref.setdefault(ref, set()).add(qname)
             try:
                 nm = aln.get_tag("NM")
             except KeyError:
                 nm = None
-            ref = aln.reference_name
             ref_seq = fasta.fetch(ref, aln.reference_start, aln.reference_end)
             events = damage_events(aln, ref_seq)
             if nm is None:
                 nm = sum(1 for _, _, rb, qb in events if rb != qb)
             length = aln.infer_read_length() or aln.query_length or len(events)
             aln_len = aln.query_alignment_length or len(events)
-            prev = best.get(aln.query_name)
+            prev = best.get(qname)
             if prev is None or nm < prev.nm:
-                best[aln.query_name] = ReadRecord(ref, nm, length, aln_len, events)
+                best[qname] = ReadRecord(ref, nm, length, aln_len, events)
     fasta.close()
-    return best
+    return best, any_on_ref
 
 
 def is_ancient(events):
@@ -164,21 +178,24 @@ def main() -> None:
     log_path = os.path.join(out, "log.txt")
 
     members = lca_members(args.lca, taxid)
-    best = scan_bam(args.bam, args.ref_fasta, members) if members else {}
+    best, any_on_ref = scan_bam(args.bam, args.ref_fasta, members) if members else ({}, {})
 
-    # Top reference = the ref receiving the most member reads' best alignments.
-    ref_votes = {}
-    for rec in best.values():
-        ref_votes[rec.ref] = ref_votes.get(rec.ref, 0) + 1
-    ref_id = max(ref_votes, key=ref_votes.get) if ref_votes else taxid
-    on_ref = [rec for rec in best.values() if rec.ref == ref_id] if ref_votes else []
-    n = len(on_ref)
+    # Node-level read set: every member read that aligned, one record (its best
+    # alignment) each. 
+    node_recs = list(best.values())
+    n = len(node_recs)
 
-    # additionalNodeEntries: encodes ref_id so common.smk::get_ref_id recovers it
-    # (contents[1].split(';')[1][1:]). If no reference was found, encode the taxid
-    # itself so _aggregate_utils drops this taxon (as the MALT path does).
-    encoded_ref = ref_id if ref_votes else taxid
-    pct = round(100.0 * n / len(best), 1) if best else 0.0
+    best_refs = {rec.ref for rec in node_recs}
+    if best_refs:
+        # most member reads aligned anywhere; ref name breaks ties deterministically
+        ref_id = max(best_refs, key=lambda r: (len(any_on_ref.get(r, ())), r))
+        top_ref_reads = len(any_on_ref.get(ref_id, ()))
+    else:
+        ref_id = taxid
+        top_ref_reads = 0
+
+    encoded_ref = ref_id if best_refs else taxid
+    pct = round(100.0 * top_ref_reads / n, 1) if n else 0.0
     os.makedirs(rd_dir, exist_ok=True)
     with open(os.path.join(rd_dir, f"{B}_additionalNodeEntries.txt"), "w") as fh:
         fh.write("Node\tadditionalNodeEntries\n")
@@ -193,7 +210,7 @@ def main() -> None:
     )
 
     # readLengthStat
-    lengths = [rec.length for rec in on_ref]
+    lengths = [rec.length for rec in node_recs]
     mean = sum(lengths) / n if n else 0
     sd = math.sqrt(sum((x - mean) ** 2 for x in lengths) / n) if n else 0
     write_table(
@@ -204,7 +221,7 @@ def main() -> None:
     # damageMismatch: C>T_1..20 (5' 1-10, 3' -10..-1), G>A_1..20, then considered
     ct5 = [0] * 10; c5 = [0] * 10; ct3 = [0] * 10; c3 = [0] * 10
     ga5 = [0] * 10; g5 = [0] * 10; ga3 = [0] * 10; g3 = [0] * 10
-    for rec in on_ref:
+    for rec in node_recs:
         for d5, d3, rb, qb in rec.events:
             if d5 < 10:
                 if rb == "C":
@@ -255,9 +272,9 @@ def main() -> None:
     edit_cols = [str(i) for i in range(11)] + ["higher"]
     write_table(
         os.path.join(out, "default", "editDistance", f"{B}_editDistance.txt"),
-        edit_cols, taxid, edit_row(on_ref),
+        edit_cols, taxid, edit_row(node_recs),
     )
-    ancient = [rec for rec in on_ref if is_ancient(rec.events)]
+    ancient = [rec for rec in node_recs if is_ancient(rec.events)]
     write_table(
         os.path.join(out, "ancient", "editDistance", f"{B}_editDistance.txt"),
         edit_cols, taxid, edit_row(ancient),
@@ -265,7 +282,7 @@ def main() -> None:
 
     # percentIdentity: bins 80,85,90,95,100
     pid_bins = {"80": 0, "85": 0, "90": 0, "95": 0, "100": 0}
-    for rec in on_ref:
+    for rec in node_recs:
         ident = 100.0 * (1 - rec.nm / rec.aln_len) if rec.aln_len else 0.0
         if ident >= 97.5:
             pid_bins["100"] += 1
@@ -291,11 +308,12 @@ def main() -> None:
 
     with open(log_path, "w") as fh:
         fh.write(
-            f"ngslca_extract: taxid={taxid} members={len(members)} "
-            f"ref_id={ref_id} reads_on_ref={n} ancient={len(ancient) if n else 0}\n"
+            f"ngslca_extract: taxid={taxid} members={len(members)} node_reads={n} "
+            f"ref_id={ref_id} top_ref_reads={top_ref_reads} ({pct}%) "
+            f"ancient={len(ancient) if n else 0}\n"
         )
-    print(f"taxid {taxid}: {len(members)} members, ref_id {ref_id}, {n} reads on ref",
-          file=sys.stderr)
+    print(f"taxid {taxid}: {len(members)} members, {n} node reads, "
+          f"ref_id {ref_id} ({pct}% of node)", file=sys.stderr)
 
 
 if __name__ == "__main__":

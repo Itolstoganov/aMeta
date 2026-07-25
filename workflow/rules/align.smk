@@ -191,7 +191,7 @@ if NGSLCA_PROFILERS:
             shell:
                 "{input.binary} {params.args} -N {params.max_secondary} -t {threads} "
                 "{input.ref} {input.fastq} 2> {log} > {params.sam}; "
-                "gzip -c {params.sam} > {output.sam}; "
+                "pigz -c {params.sam} > {output.sam}; "
                 "samtools sort -n -@ {threads} -o {output.namesorted_bam} {params.sam}; "
                 "rm {params.sam}"
 
