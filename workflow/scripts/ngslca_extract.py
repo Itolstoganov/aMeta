@@ -10,13 +10,20 @@ they actually consume. Everything downstream (score.R, authentic.R,
 Breadth_Of_Coverage via get_ref_id) is therefore reused byte-for-byte.
 
 Reads "belong" to the taxid if the taxid appears anywhere in that read's ngsLCA
-lineage (i.e. the read resolved to this species or finer). Like MALT, the
-per-read metrics (edit distance, damage, read length, identity) are aggregated over
-all such member reads at the node level, each contributing its lowest-NM
-alignment regardless of which of the species' accessions it landed on. A single
-"top reference" (ref_id) -- the target genome the most member reads aligned -- 
-is used only for the per-reference outputs (coverage/IGV and the
-TOPREFPERCREADS share), matching MaltExtract.
+lineage (i.e. the read resolved to this species or finer). When a seqid2taxid map
+is supplied (--seqid2taxid), only a member read's alignments to references that are
+actually assigned to this taxid count -- this stops a node being authenticated
+against another taxon's genome just because its member reads happen to cross-map
+there (e.g. a KrakenUniq false positive such as taxid 32630 "synthetic construct",
+whose reads are really some real genome that lands on the 32630 node via a shared
+fragment). If no member read aligns to any own-taxon reference, the node has no
+representative genome: a warning is emitted and every table comes out empty
+(score 0). Like MALT, the per-read metrics (edit distance, damage, read length,
+identity) are then aggregated over the qualifying member reads at the node level,
+each contributing its lowest-NM alignment. A single "top reference" (ref_id) -- the
+own-taxon genome the most member reads aligned to -- is used only for the
+per-reference outputs (coverage/IGV and the TOPREFPERCREADS share), matching
+MaltExtract.
 
 Files written under <out_dir> (= .../MaltExtract_output/), with <B> = rma6 basename:
   log.txt
@@ -69,6 +76,22 @@ def lca_members(lca_path, taxid):
     return members
 
 
+def load_own_accessions(map_path, taxid):
+    """Accessions in the seqid2taxid map (accession<TAB>taxid) assigned to `taxid`.
+
+    Used to constrain a node's representative reference to a genome that actually
+    belongs to the node's taxon, rather than whatever its member reads happen to
+    align to most (see the module docstring).
+    """
+    own = set()
+    with open(map_path) as fh:
+        for line in fh:
+            f = line.rstrip("\n").split("\t")
+            if len(f) >= 2 and f[1] == taxid:
+                own.add(f[0])
+    return own
+
+
 def damage_events(aln, ref_seq):
     """Per matched position: (dist5, dist3, ref_base, read_base) in original-read
     orientation. ref_seq is the forward-strand reference over the aligned span."""
@@ -106,17 +129,25 @@ class ReadRecord:
         self.events = events
 
 
-def scan_bam(bam_path, ref_fasta, members):
+def scan_bam(bam_path, ref_fasta, members, own_accs=None):
     """Scan the member reads' alignments.
 
-    Returns (best, any_on_ref):
-      best       = {readid: ReadRecord} of each member's best (lowest-NM) alignment.
-      any_on_ref = {ref: set(readid)} of every member read that has any alignment on
-                   a reference, used only to pick the top reference and its
-                   TOPREFPERCREADS share.
+    If `own_accs` is not None, only alignments to references in that set (the ones
+    assigned to the node's taxid) count towards `best`/`any_on_ref`; alignments to
+    any other reference are recorded in `foreign_on_ref` only, so the caller can
+    report where the reads went when no own-taxon reference qualifies.
+
+    Returns (best, any_on_ref, foreign_on_ref):
+      best           = {readid: ReadRecord} of each member's best (lowest-NM) alignment.
+      any_on_ref     = {ref: set(readid)} of every member read with any qualifying
+                       alignment on a reference, used to pick the top reference and
+                       its TOPREFPERCREADS share.
+      foreign_on_ref = {ref: set(readid)} of member reads that aligned only to
+                       non-own-taxon references (empty when own_accs is None).
     """
     best = {}
     any_on_ref = {}
+    foreign_on_ref = {}
     fasta = pysam.FastaFile(ref_fasta)
     with pysam.AlignmentFile(bam_path, "rb", check_sq=False) as bam:
         for aln in bam:
@@ -124,6 +155,9 @@ def scan_bam(bam_path, ref_fasta, members):
                 continue
             qname = aln.query_name
             ref = aln.reference_name
+            if own_accs is not None and ref not in own_accs:
+                foreign_on_ref.setdefault(ref, set()).add(qname)
+                continue
             any_on_ref.setdefault(ref, set()).add(qname)
             try:
                 nm = aln.get_tag("NM")
@@ -139,7 +173,7 @@ def scan_bam(bam_path, ref_fasta, members):
             if prev is None or nm < prev.nm:
                 best[qname] = ReadRecord(ref, nm, length, aln_len, events)
     fasta.close()
-    return best, any_on_ref
+    return best, any_on_ref, foreign_on_ref
 
 
 def is_ancient(events):
@@ -167,6 +201,11 @@ def main() -> None:
     ap.add_argument("--taxid", required=True)
     ap.add_argument("--node-list", required=True)
     ap.add_argument("--ref-fasta", required=True)
+    ap.add_argument("--seqid2taxid",
+                    help="seqid2taxid map (accession<TAB>taxid); when given, the "
+                         "node's representative reference is restricted to genomes "
+                         "assigned to this taxid, and a warning is issued if none "
+                         "qualifies")
     ap.add_argument("--out-dir", required=True)
     ap.add_argument("--rma6-basename", required=True)
     args = ap.parse_args()
@@ -178,10 +217,15 @@ def main() -> None:
     log_path = os.path.join(out, "log.txt")
 
     members = lca_members(args.lca, taxid)
-    best, any_on_ref = scan_bam(args.bam, args.ref_fasta, members) if members else ({}, {})
+    own_accs = load_own_accessions(args.seqid2taxid, taxid) if args.seqid2taxid else None
+    if members:
+        best, any_on_ref, foreign_on_ref = scan_bam(
+            args.bam, args.ref_fasta, members, own_accs)
+    else:
+        best, any_on_ref, foreign_on_ref = {}, {}, {}
 
-    # Node-level read set: every member read that aligned, one record (its best
-    # alignment) each. 
+    # Node-level read set: every member read that aligned to an own-taxon
+    # reference, one record (its best alignment) each.
     node_recs = list(best.values())
     n = len(node_recs)
 
@@ -193,6 +237,19 @@ def main() -> None:
     else:
         ref_id = taxid
         top_ref_reads = 0
+        # Guard fired: member reads exist and aligned somewhere, but to no
+        # reference belonging to this taxid. The node has no representative
+        # genome and all tables below come out empty (score 0).
+        if own_accs is not None and foreign_on_ref:
+            top_foreign = max(foreign_on_ref,
+                              key=lambda r: (len(foreign_on_ref[r]), r))
+            n_foreign = len(set().union(*foreign_on_ref.values()))
+            avail = (f"none of the {len(own_accs)} reference(s) assigned to this taxid"
+                     if own_accs else "no reference in the map is assigned to this taxid, so none")
+            print(f"WARNING: taxid {taxid}: {avail} were aligned by any of its "
+                  f"{len(members)} member read(s); {n_foreign} member read(s) aligned "
+                  f"only to other taxa (most to {top_foreign}). No representative "
+                  f"reference -- node not authenticated.", file=sys.stderr)
 
     encoded_ref = ref_id if best_refs else taxid
     pct = round(100.0 * top_ref_reads / n, 1) if n else 0.0

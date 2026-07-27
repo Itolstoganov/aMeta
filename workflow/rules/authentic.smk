@@ -119,6 +119,7 @@ if NGSLCA_PROFILERS:
             node_list="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/node_list.txt",
             ref_fasta="results/REFERENCE_DB/library.project.fna",
             ref_fai="results/REFERENCE_DB/library.project.fna.fai",
+            seqid2taxid="results/REFERENCE_DB/seqid2taxid.project.map",
         output:
             maltextractlog="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/MaltExtract_output/log.txt",
             nodeentries="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/MaltExtract_output/default/readDist/{sample}.trimmed.rma6_additionalNodeEntries.txt",
@@ -136,7 +137,8 @@ if NGSLCA_PROFILERS:
         shell:
             "python {params.exe} --bam {input.bam} --lca {input.lca} "
             "--taxid {wildcards.taxid} --node-list {input.node_list} "
-            "--ref-fasta {input.ref_fasta} --out-dir {params.extract} "
+            "--ref-fasta {input.ref_fasta} --seqid2taxid {input.seqid2taxid} "
+            "--out-dir {params.extract} "
             "--rma6-basename {params.rma6_basename} 2> {log}"
 
 
