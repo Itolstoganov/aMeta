@@ -30,7 +30,9 @@ Files written under <out_dir> (= .../MaltExtract_output/), with <B> = rma6 basen
   default/readDist/<B>_additionalNodeEntries.txt   (encodes ref_id for get_ref_id)
   default/readDist/<B>_alignmentDist.txt            (TotalAlignmentsOnReference, ...)
   default/readDist/<B>_readLengthStat.txt           (Mean, StandardDev)
-  default/damageMismatch/<B>_damageMismatch.txt     (C>T_1..20, G>A_1..20, considered)
+  default/damageMismatch/<B>_damageMismatch.txt     (MaltExtract layout: C>T_1..10 (5'),
+                                                     G>A_11..20 (3'), D>V/H>B background,
+                                                     considered_Matches)
   default/editDistance/<B>_editDistance.txt         (0..10, higher)
   ancient/editDistance/<B>_editDistance.txt         (0..10, higher; damaged reads only)
   default/percentIdentity/<B>_percentIdentity.txt   (80,85,90,95,100)
@@ -275,44 +277,73 @@ def main() -> None:
         ["Mean", "StandardDev"], taxid, [round(mean, 4), round(sd, 4)],
     )
 
-    # damageMismatch: C>T_1..20 (5' 1-10, 3' -10..-1), G>A_1..20, then considered
-    ct5 = [0] * 10; c5 = [0] * 10; ct3 = [0] * 10; c3 = [0] * 10
-    ga5 = [0] * 10; g5 = [0] * 10; ga3 = [0] * 10; g3 = [0] * 10
+    # damageMismatch, in MaltExtract's exact column layout so authentic.R plots the
+    # ngsLCA output identically to MALT (it indexes columns positionally):
+    #   C>T_1..C>T_10               5' C->T rate per position   (diagnostic, red line)
+    #   G>A_11..G>A_20              3' G->A rate per position    (diagnostic, blue line;
+    #                                                             _20 = 3' terminus)
+    #   D>V(11Substitution)_1..10   5' background: the 11 substitutions other than C>T
+    #   H>B(11Substitution)_11..20  3' background: the 11 substitutions other than G>A
+    #   considered_Matches          reads considered
+    # The diagnostic rate is (substitution count) / (reference-base count), as in
+    # MaltExtract. The two background tracks are the pooled rate of every OTHER
+    # substitution: (all mismatches - the diagnostic one) / (all reference bases) at
+    # that position (matching MaltExtract's low background magnitude).
+    # NOTE the diagnostic tracks are 5'-only (C>T) and 3'-only (G>A); C>T at the 3'
+    # end and G>A at the 5' end are deliberately not reported, matching MaltExtract.
+    bidx = {b: i for i, b in enumerate("ACGT")}
+    ct5 = [0] * 10; c5 = [0] * 10           # C->T and ref-C counts, 5' positions 0..9
+    ga3 = [0] * 10; g3 = [0] * 10           # G->A and ref-G counts, 3' positions 0..9
+    cnt5 = [[0] * 10 for _ in range(4)]      # ref-base occurrences per position, 5'
+    mm5 = [[0] * 10 for _ in range(4)]       # any-substitution counts per position, 5'
+    cnt3 = [[0] * 10 for _ in range(4)]      # ... 3'
+    mm3 = [[0] * 10 for _ in range(4)]
     for rec in node_recs:
         for d5, d3, rb, qb in rec.events:
+            bi = bidx.get(rb)
+            if bi is None:
+                continue
+            mism = qb != rb and qb in bidx
             if d5 < 10:
+                cnt5[bi][d5] += 1
+                if mism:
+                    mm5[bi][d5] += 1
                 if rb == "C":
                     c5[d5] += 1
                     if qb == "T":
                         ct5[d5] += 1
-                if rb == "G":
-                    g5[d5] += 1
-                    if qb == "A":
-                        ga5[d5] += 1
             if d3 < 10:
-                if rb == "C":
-                    c3[d3] += 1
-                    if qb == "T":
-                        ct3[d3] += 1
+                cnt3[bi][d3] += 1
+                if mism:
+                    mm3[bi][d3] += 1
                 if rb == "G":
                     g3[d3] += 1
                     if qb == "A":
                         ga3[d3] += 1
 
-    ct = []
-    for i in range(10):                       # C>T_1..C>T_10  (5')
-        ct.append(round(ct5[i] / c5[i], 6) if c5[i] else 0.0)
-    for i in range(9, -1, -1):                # C>T_11..C>T_20 (3', 20 = -1)
-        ct.append(round(ct3[i] / c3[i], 6) if c3[i] else 0.0)
-    for i in range(10):                       # G>A_1..G>A_10  (5')
-        ct.append(round(ga5[i] / g5[i], 6) if g5[i] else 0.0)
-    for i in range(9, -1, -1):                # G>A_11..G>A_20 (3', 20 = -1)
-        ct.append(round(ga3[i] / g3[i], 6) if g3[i] else 0.0)
-    dam_cols = ([f"C>T_{i}" for i in range(1, 21)]
-                + [f"G>A_{i}" for i in range(1, 21)] + ["considered"])
+    def bg_rate(cnt, mm, i, diag_count):
+        """Pooled rate of all substitutions except the diagnostic one at position i:
+        (total mismatches - diagnostic) / (total reference bases)."""
+        tot = sum(cnt[b][i] for b in range(4))
+        other = sum(mm[b][i] for b in range(4)) - diag_count
+        return other / tot if tot else 0.0
+
+    ct_row = [round(ct5[i] / c5[i], 6) if c5[i] else 0.0
+              for i in range(10)]                          # C>T_1..C>T_10   (5')
+    ga_row = [round(ga3[i] / g3[i], 6) if g3[i] else 0.0
+              for i in range(9, -1, -1)]                   # G>A_11..G>A_20  (3', _20 = -1)
+    dv_row = [round(max(bg_rate(cnt5, mm5, i, ct5[i]), 0.0), 6)
+              for i in range(10)]                          # D>V_1..D>V_10   (5')
+    hb_row = [round(max(bg_rate(cnt3, mm3, i, ga3[i]), 0.0), 6)
+              for i in range(9, -1, -1)]                   # H>B_11..H>B_20  (3', _20 = -1)
+    dam_cols = ([f"C>T_{i}" for i in range(1, 11)]
+                + [f"G>A_{i}" for i in range(11, 21)]
+                + [f"D>V(11Substitution)_{i}" for i in range(1, 11)]
+                + [f"H>B(11Substitution)_{i}" for i in range(11, 21)]
+                + ["considered_Matches"])
     write_table(
         os.path.join(out, "default", "damageMismatch", f"{B}_damageMismatch.txt"),
-        dam_cols, taxid, ct + [n],
+        dam_cols, taxid, ct_row + ga_row + dv_row + hb_row + [n],
     )
 
     # editDistance (all + ancient): bins 0..10, higher
