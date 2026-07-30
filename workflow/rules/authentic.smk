@@ -221,7 +221,7 @@ rule Breadth_Of_Coverage:
         "mv $D/sorted.md.bam {output.sorted_bam}; "
         "fi; "
         "samtools index {output.sorted_bam}; "
-        "samtools depth -a {output.sorted_bam} > {output.breadth_of_coverage}; "
+        "samtools depth -a -g 0x100 {output.sorted_bam} > {output.breadth_of_coverage}; "
         "grep -w -f {output.name_list} {input.malt_fasta_fai} | awk '{{printf(\"%s:1-%s\\n\", $1, $2)}}' > {output.name_list}.regions; "
         "samtools faidx {input.malt_fasta} -r {output.name_list}.regions -o results/AUTHENTICATION/{wildcards.profiler}/{wildcards.sample}/{wildcards.taxid}/{params.ref_id}.fasta"
 
@@ -317,6 +317,8 @@ rule Authentication_Score:
         maltextractlog="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/MaltExtract_output/log.txt",
         name_list="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/name_list.txt",
         scores="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/PMDscores.txt",
+        breadth_of_coverage="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/breadth_of_coverage",
+        read_length="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/read_length.txt",
     output:
         scores="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/authentication_scores.txt",
     message:
