@@ -15,6 +15,9 @@ malt_nt_fasta: resources/maltntfasta
 malt_accession2taxid: resources/malt_acc2tax
 ncbi_db: resources/ncbi
 
+# JVM max heap for malt-build and malt-run; unset keeps MALT's own .vmoptions setting.
+# malt_max_heap: "64G"
+
 # Alignment + taxonomy backend(s). One or more may be listed; each profiler
 # produces its own independent authentication tree under
 # results/AUTHENTICATION/<profiler>/, abundance matrix, and score heatmap.

@@ -171,6 +171,13 @@ properties:
     description: >-
       KrakenUniq preload chunk size used with --preload-size. This controls the
       database chunk size, not the total memory used by the job.
+  malt_max_heap:
+    type: string
+    default: ""
+    description: >-
+      JVM maximum heap size for malt-build and malt-run, e.g. "64G", passed as
+      -J-Xmx<value>; empty (the default) keeps the MALT installation's own
+      .vmoptions setting.
 
   envmodules:
     type: object

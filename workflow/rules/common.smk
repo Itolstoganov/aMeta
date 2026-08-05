@@ -185,6 +185,13 @@ def get_krakenuniq_preload_option():
 
     raise ValueError("krakenuniq_preload_mode must be 'preload-size', 'preload_size' or 'preload'.")
 
+def get_malt_heap_option():
+    """JVM max-heap flag for malt-run/malt-build, or "" to keep their .vmoptions default."""
+    max_heap = config.get("malt_max_heap", "")
+    if not max_heap:
+        return ""
+    return f"-J-Xmx{max_heap}"
+
 def mapdamage_input(wildcards):
     if not config["analyses"]["mapdamage"]:
         return []

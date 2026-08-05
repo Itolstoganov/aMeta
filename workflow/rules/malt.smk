@@ -7,6 +7,7 @@ rule Build_Malt_DB:
         project_fasta="results/REFERENCE_DB/library.project.fna",
     params:
         accession2taxid=config["malt_accession2taxid"],
+        max_heap=get_malt_heap_option(),
     threads: 20
     log:
         "logs/BUILD_MALT_DB/BUILD_MALT_DB.log",
@@ -31,6 +32,7 @@ rule Malt:
         db="results/MALT_DB/maltDB.dat",
     params:
         gunzipped_sam="results/MALT/{sample}.trimmed.sam",
+        max_heap=get_malt_heap_option(),
     threads: 20
     log:
         "logs/MALT/{sample}.log",
@@ -43,7 +45,7 @@ rule Malt:
     message:
         "Malt: RUNNING MALT ALIGNMENTS FOR SAMPLE {input.fastq}"
     shell:
-        "unset DISPLAY; malt-run -at SemiGlobal -m BlastN -i {input.fastq} -o {output.rma6} -a {params.gunzipped_sam} -t {threads} -d {input.db} -sup 1 -mq 100 -top 1 -mpi 85.0 -id 85.0 -v &> {log}"
+        "unset DISPLAY; malt-run {params.max_heap} -at SemiGlobal -m BlastN -i {input.fastq} -o {output.rma6} -a {params.gunzipped_sam} -t {threads} -d {input.db} -sup 1 -mq 100 -top 1 -mpi 85.0 -id 85.0 -v &> {log}"
 
 
 rule Malt_QuantifyAbundance:

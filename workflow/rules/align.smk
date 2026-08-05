@@ -111,6 +111,28 @@ rule Reference_Subset:
         "seqtk subseq {params.nt_fasta} {output.project_headers} > {output.project_fasta} 2> {log}"
 
 
+rule Project_Fasta_Faidx:
+    """Index the project FASTA; Samtools_Faidx's ancient() input would keep the previous run's stale .fai."""
+    output:
+        fai="results/REFERENCE_DB/library.project.fna.fai",
+    input:
+        fna="results/REFERENCE_DB/library.project.fna",
+    threads: 1
+    log:
+        "logs/REFERENCE_SUBSET/PROJECT_FASTA_FAIDX.log",
+    conda:
+        "../envs/samtools.yaml"
+    envmodules:
+        *config["envmodules"]["samtools"],
+    message:
+        "Project_Fasta_Faidx: INDEXING THE PROJECT FASTA SUBSET"
+    shell:
+        "samtools faidx {input.fna} 2> {log}"
+
+
+ruleorder: Project_Fasta_Faidx > Samtools_Faidx
+
+
 if NGSLCA_PROFILERS:
 
     _aligner = config.get("aligner", {})
