@@ -183,10 +183,11 @@ rule Samtools_Faidx:
 
 
 rule Breadth_Of_Coverage:
+    # Reference sequences come from the Reference_Subset output, not the full nt FASTA
     input:
         sam=auth_alignment_sam,
-        malt_fasta=config["malt_nt_fasta"],
-        malt_fasta_fai=f"{config['malt_nt_fasta']}.fai",
+        ref_fasta="results/REFERENCE_DB/library.project.fna",
+        ref_fasta_fai="results/REFERENCE_DB/library.project.fna.fai",
         nodeentries="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/MaltExtract_output/default/readDist/{sample}.trimmed.rma6_additionalNodeEntries.txt",
     output:
         name_list="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/name_list.txt",
@@ -215,15 +216,15 @@ rule Breadth_Of_Coverage:
         "samtools sort results/AUTHENTICATION/{wildcards.profiler}/{wildcards.sample}/{wildcards.taxid}/{params.ref_id}.bam > {output.sorted_bam}; "
         "if [ \"{wildcards.profiler}\" != \"malt\" ]; then "
         "D=$(dirname {output.sorted_bam}); "
-        "samtools faidx {input.malt_fasta} {params.ref_id} > $D/{params.ref_id}.calmd.fasta; "
+        "samtools faidx {input.ref_fasta} {params.ref_id} > $D/{params.ref_id}.calmd.fasta; "
         "samtools faidx $D/{params.ref_id}.calmd.fasta; "
         "samtools calmd -b {output.sorted_bam} $D/{params.ref_id}.calmd.fasta > $D/sorted.md.bam 2>> {log}; "
         "mv $D/sorted.md.bam {output.sorted_bam}; "
         "fi; "
         "samtools index {output.sorted_bam}; "
         "samtools depth -a -g 0x100 {output.sorted_bam} > {output.breadth_of_coverage}; "
-        "grep -w -f {output.name_list} {input.malt_fasta_fai} | awk '{{printf(\"%s:1-%s\\n\", $1, $2)}}' > {output.name_list}.regions; "
-        "samtools faidx {input.malt_fasta} -r {output.name_list}.regions -o results/AUTHENTICATION/{wildcards.profiler}/{wildcards.sample}/{wildcards.taxid}/{params.ref_id}.fasta"
+        "grep -w -f {output.name_list} {input.ref_fasta_fai} | awk '{{printf(\"%s:1-%s\\n\", $1, $2)}}' > {output.name_list}.regions; "
+        "samtools faidx {input.ref_fasta} -r {output.name_list}.regions -o results/AUTHENTICATION/{wildcards.profiler}/{wildcards.sample}/{wildcards.taxid}/{params.ref_id}.fasta"
 
 
 rule Read_Length_Distribution:
