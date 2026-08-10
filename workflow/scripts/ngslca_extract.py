@@ -38,9 +38,15 @@ Files written under <out_dir> (= .../MaltExtract_output/), with <B> = rma6 basen
   default/percentIdentity/<B>_percentIdentity.txt   (80,85,90,95,100)
   default/filterInformation/<B>_filterTable.txt     (turnedOn?)
 
+With --read-list, the names of the node read set are also written to that path, one
+per line. Breadth_Of_Coverage uses it to restrict the per-reference BAM (and hence
+coverage, PMD scores and read lengths) to the same reads the tables above are
+computed from, so every component of the authentication score sees one read set.
+
 Usage:
   ngslca_extract.py --bam BAM --lca LCA --taxid TAXID --node-list NODE_LIST
                     --ref-fasta FASTA --out-dir DIR --rma6-basename B
+                    [--read-list FILE]
 """
 import argparse
 import math
@@ -210,6 +216,10 @@ def main() -> None:
                          "qualifies")
     ap.add_argument("--out-dir", required=True)
     ap.add_argument("--rma6-basename", required=True)
+    ap.add_argument("--read-list",
+                    help="write the names of the node read set here, one per line "
+                         "(used downstream to keep every score component on the "
+                         "same taxid-specific reads)")
     args = ap.parse_args()
 
     taxid = args.taxid
@@ -230,6 +240,15 @@ def main() -> None:
     # reference, one record (its best alignment) each.
     node_recs = list(best.values())
     n = len(node_recs)
+
+    # The node read set, for downstream rules that filter the alignments themselves
+    # (Breadth_Of_Coverage). Written even when empty: an empty list means "no read
+    # belongs here", which must yield an empty BAM rather than an unfiltered one.
+    if args.read_list:
+        os.makedirs(os.path.dirname(os.path.abspath(args.read_list)), exist_ok=True)
+        with open(args.read_list, "w") as fh:
+            for qname in sorted(best):
+                fh.write(qname + "\n")
 
     best_refs = {rec.ref for rec in node_recs}
     if best_refs:

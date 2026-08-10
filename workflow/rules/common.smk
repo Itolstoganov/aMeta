@@ -1,3 +1,4 @@
+import glob
 import os
 import sys
 import subprocess as sp
@@ -267,23 +268,23 @@ def aggregate_maltextract(wildcards):
     )
 
 
-def _aggregate_utils(fmt, wildcards):
-    """Collect common output for all aggregate functions. Returns a tuple
-    of lists sample, and taxid"""
-    logger.debug(
-        f"Running _aggregate_utils for format '{fmt}', wildcards '{dict(wildcards)}'"
-    )
-    res = []
+def partition_auth_nodes(wildcards):
+    """Split this sample's authentication nodes into (kept, dropped) taxids.
+
+    A node is only worth carrying downstream when get_ref_id finds a real top
+    reference to align against. It falls back to the taxid itself for a node the
+    profiler assigned no reads to: MaltExtract then writes an all-NA
+    additionalNodeEntries table and the ngsLCA extractor writes a
+    ";_<taxid>;_TOPREFPERCREADS" placeholder, neither of which names a reference.
+    Those nodes are dropped from the DAG.
+    """
     checkpoint_output = checkpoints.Create_Sample_TaxID_Directories.get(
         sample=wildcards.sample, profiler=wildcards.profiler
     ).output[0]
     taxid = glob_wildcards(
         os.path.join(os.path.dirname(checkpoint_output), "{taxid,[0-9]+}")
     ).taxid
-    profiler = []
-    sample = []
-    refid = []
-    taxid_out = []
+    kept, dropped = [], []
     for tid in taxid:
         wc = Wildcards(
             fromdict={
@@ -293,14 +294,26 @@ def _aggregate_utils(fmt, wildcards):
             }
         )
         _refid = get_ref_id(wc)
-        if _refid is not None and _refid != tid:
-            refid.append(_refid)
-            taxid_out.append(tid)
-            sample.append(wildcards.sample)
-            profiler.append(wildcards.profiler)
-    if len(refid) > 0:
-        res = expand(fmt, zip, profiler=profiler, sample=sample, taxid=taxid_out)
-    return res
+        (kept if _refid is not None and _refid != tid else dropped).append(tid)
+    return kept, dropped
+
+
+def _aggregate_utils(fmt, wildcards):
+    """Collect common output for all aggregate functions. Returns a tuple
+    of lists sample, and taxid"""
+    logger.debug(
+        f"Running _aggregate_utils for format '{fmt}', wildcards '{dict(wildcards)}'"
+    )
+    taxid_out, _ = partition_auth_nodes(wildcards)
+    if not taxid_out:
+        return []
+    return expand(
+        fmt,
+        zip,
+        profiler=[wildcards.profiler] * len(taxid_out),
+        sample=[wildcards.sample] * len(taxid_out),
+        taxid=taxid_out,
+    )
 
 
 def aggregate_PMD(wildcards):
@@ -318,6 +331,59 @@ def aggregate_scores(wildcards):
 def aggregate_post(wildcards):
     fmt = "results/AUTHENTICATION/{profiler}/{sample}/{taxid}/MaltExtract_output/analysis.RData"
     return _aggregate_utils(fmt, wildcards)
+
+
+# Everything an authentication node gains after MaltExtract
+_AUTH_NODE_LEFTOVERS = (
+    "authentication_scores.txt",
+    "breadth_of_coverage",
+    "name_list.txt",
+    "name_list.txt.regions",
+    "read_length.txt",
+    "PMDscores.txt",
+    "PMD_temp.txt",
+    "PMD_plot.frag.pdf",
+    "plotPMD.Rout",
+    "MaltExtract_output/analysis.RData",
+)
+_AUTH_NODE_LEFTOVER_GLOBS = (
+    "*.bam",
+    "*.bam.bai",
+    "*.sam",
+    "*.fasta",
+    "*.fai",
+    "authentic_Sample_*.pdf",
+    "authentic_Sample_*.png",
+)
+
+
+def remove_stale_auth_nodes(wildcards):
+    """Delete the leftover outputs of nodes dropped from this authentication run.
+    
+    Returns the list of removed paths, for logging.
+    """
+    _, dropped = partition_auth_nodes(wildcards)
+    removed = []
+    for tid in dropped:
+        node = os.path.join(
+            "results", "AUTHENTICATION", wildcards.profiler, wildcards.sample, tid
+        )
+        paths = [os.path.join(node, name) for name in _AUTH_NODE_LEFTOVERS]
+        for pattern in _AUTH_NODE_LEFTOVER_GLOBS:
+            paths += glob.glob(os.path.join(node, pattern))
+        # the copies Authentication_Plots fans out to the two plot directories
+        plot = f"authentic_Sample_{wildcards.sample}.trimmed.rma6_TaxID_{tid}"
+        paths += [
+            os.path.join("results", f"AUTHENTICATION_PLOTS_{ext.upper()}",
+                         wildcards.profiler, f"{plot}.{ext}")
+            for ext in ("pdf", "png")
+        ]
+        for path in paths:
+            if os.path.isfile(path):
+                os.remove(path)
+                removed.append(path)
+    return removed
+
 
 def auth_alignment_sam(wildcards):
     """SAM (accession/tax RNAME space) feeding the authentication path: the MALT

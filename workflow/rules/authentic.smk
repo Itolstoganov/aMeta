@@ -33,6 +33,13 @@ rule aggregate:
     refid. For this reason, also MaltExtract is a checkpoint, which
     upon completion triggers reevaluation of the DAG.
 
+    The aggregate functions drop nodes with no top reference (see
+    partition_auth_nodes), and Snakemake will not clean up after a node it never
+    put in the DAG. This is the one rule that runs once per sample with the
+    checkpoint settled, so it is also where the dropped nodes' leftovers from any
+    earlier run in this results directory are removed -- otherwise plot_score.R
+    globs them back in and reports a stale score as a current one.
+
     """
     input:
         aggregate_maltextract,
@@ -45,8 +52,18 @@ rule aggregate:
     log:
         "logs/AGGREGATE/{profiler}_{sample}.log",
     threads: 1
-    shell:
-        "touch {output}; "
+    run:
+        removed = remove_stale_auth_nodes(wildcards)
+        with open(log[0], "w") as fh:
+            for path in removed:
+                print(f"removed stale authentication output: {path}", file=fh)
+        if removed:
+            logger.warning(
+                f"aggregate: removed {len(removed)} stale authentication output(s) "
+                f"of read-less nodes for {wildcards.profiler}/{wildcards.sample} "
+                f"(see {log[0]})"
+            )
+        Path(output[0]).touch()
 
 
 rule Make_Node_List:
@@ -100,6 +117,38 @@ if "malt" in PROFILERS:
         shell:
             "time MaltExtract -Xmx32G -i {input.rma6} -f def_anc -o {params.extract} -r {params.ncbi_db} --reads --destackingOff --downSampOff --dupRemOff --threads {threads} --matches --minPI 85.0 --maxReadLength 0 --minComp 0.0 --meganSummary -t {input.node_list} -v 2> {log}"
 
+    rule Malt_Read_List:
+        """Names of the reads MALT assigned to this taxid.
+
+        MaltExtract --reads dumps one FASTA per node under
+        default/reads/<rma6>/ (the target node plus any of its descendants, e.g.
+        strains), which is exactly the read set its tables are computed from.
+        Collecting the headers gives Breadth_Of_Coverage the same taxid-specific
+        reads, so coverage/PMD/read-length agree with the MaltExtract-derived
+        score components. The ngsLCA path gets this file from NgsLCA_Extract.
+        """
+        wildcard_constraints:
+            profiler="malt",
+        input:
+            nodeentries="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/MaltExtract_output/default/readDist/{sample}.trimmed.rma6_additionalNodeEntries.txt",
+        output:
+            read_list="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/read_list.txt",
+        params:
+            reads_dir="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/MaltExtract_output/default/reads/{sample}.trimmed.rma6",
+        log:
+            "logs/MALT_READ_LIST/{profiler}_{sample}_{taxid}.log",
+        threads: 1
+        message:
+            "Malt_Read_List: COLLECTING TAXID-SPECIFIC READ NAMES FOR {wildcards.sample} TAXID {wildcards.taxid}"
+        shell:
+            # No FASTA at all means no read was assigned to the node: emit an empty
+            # list rather than leaving the alignments unfiltered downstream.
+            "( if compgen -G '{params.reads_dir}/*.fasta' > /dev/null; then "
+            "cat {params.reads_dir}/*.fasta; fi "
+            "| awk '/^>/ {{ sub(/^>/, \"\"); sub(/[ \\t].*/, \"\"); print }}' "
+            "| sort -u ) > {output.read_list} 2> {log}"
+
+
 if NGSLCA_PROFILERS:
 
     checkpoint NgsLCA_Extract:
@@ -123,6 +172,7 @@ if NGSLCA_PROFILERS:
         output:
             maltextractlog="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/MaltExtract_output/log.txt",
             nodeentries="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/MaltExtract_output/default/readDist/{sample}.trimmed.rma6_additionalNodeEntries.txt",
+            read_list="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/read_list.txt",
         params:
             extract=format_maltextract_output_directory,
             exe=WORKFLOW_DIR / "scripts/ngslca_extract.py",
@@ -138,7 +188,7 @@ if NGSLCA_PROFILERS:
             "python {params.exe} --bam {input.bam} --lca {input.lca} "
             "--taxid {wildcards.taxid} --node-list {input.node_list} "
             "--ref-fasta {input.ref_fasta} --seqid2taxid {input.seqid2taxid} "
-            "--out-dir {params.extract} "
+            "--out-dir {params.extract} --read-list {output.read_list} "
             "--rma6-basename {params.rma6_basename} 2> {log}"
 
 
@@ -183,12 +233,13 @@ rule Samtools_Faidx:
 
 
 rule Breadth_Of_Coverage:
-    # Reference sequences come from the Reference_Subset output, not the full nt FASTA
+    # Reference sequences come from the Reference_Subset output, not the full nt FASTA.
     input:
         sam=auth_alignment_sam,
         ref_fasta="results/REFERENCE_DB/library.project.fna",
         ref_fasta_fai="results/REFERENCE_DB/library.project.fna.fai",
         nodeentries="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/MaltExtract_output/default/readDist/{sample}.trimmed.rma6_additionalNodeEntries.txt",
+        read_list="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/read_list.txt",
     output:
         name_list="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/name_list.txt",
         sorted_bam="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/sorted.bam",
@@ -207,11 +258,14 @@ rule Breadth_Of_Coverage:
         *config["envmodules"]["malt"],
     shell:
         "echo {params.ref_id} > {output.name_list}; "
-        # Keep only records whose RNAME is ref_id
-        "zcat -f {input.sam} | awk -v ref=\"{params.ref_id}\" 'BEGIN{{FS=OFS=\"\\t\"}} "
+        # Keep only records whose RNAME is ref_id AND whose read is assigned to this
+        # taxid. The read list is slurped in BEGIN (not with the NR==FNR idiom, which
+        # silently keeps everything when the list is empty).
+        "zcat -f {input.sam} | awk -v ref=\"{params.ref_id}\" -v rl=\"{input.read_list}\" "
+        "'BEGIN{{FS=OFS=\"\\t\"; while((getline r < rl) > 0) keep[r]=1}} "
         "/^@SQ/{{sn=$2; sub(/^SN:/,\"\",sn); acc=sn; sub(/\\|.*/,\"\",acc); if(acc==ref) print; next}} "
         "/^@/{{print; next}} "
-        "{{rn=$3; sub(/\\|.*/,\"\",rn); if(rn==ref) print}}' | uniq > {output.sam}; "
+        "{{rn=$3; sub(/\\|.*/,\"\",rn); if(rn==ref && ($1 in keep)) print}}' | uniq > {output.sam}; "
         "samtools view -bS {output.sam} > results/AUTHENTICATION/{wildcards.profiler}/{wildcards.sample}/{wildcards.taxid}/{params.ref_id}.bam; "
         "samtools sort results/AUTHENTICATION/{wildcards.profiler}/{wildcards.sample}/{wildcards.taxid}/{params.ref_id}.bam > {output.sorted_bam}; "
         "if [ \"{wildcards.profiler}\" != \"malt\" ]; then "
