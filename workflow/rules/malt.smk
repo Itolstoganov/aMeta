@@ -8,6 +8,14 @@ rule Build_Malt_DB:
     params:
         accession2taxid=config["malt_accession2taxid"],
         max_heap=get_malt_heap_option(),
+        # malt-build labels a reference by parsing organism names out of its
+        # FASTA description as well as looking the accession up in -a2t, and
+        # takes the LCA of every name it matches -- so a description naming a
+        # second organism (a homolog it is "similar to", a cloning host, a lab
+        # in a clone name) drags the label to a coarser or unrelated node. Off,
+        # labels come from the accession alone, which is what ngsLCA's -acc2tax
+        # does, making the two backends' taxon assignments comparable.
+        parse_taxon_names=config.get("malt_parse_taxon_names", True),
     threads: 20
     log:
         "logs/BUILD_MALT_DB/BUILD_MALT_DB.log",

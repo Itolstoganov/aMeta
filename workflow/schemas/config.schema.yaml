@@ -76,6 +76,19 @@ properties:
     type: string
     description: >-
       Accession to taxonomy id mapping
+  malt_parse_taxon_names:
+    type: boolean
+    default: true
+    description: >-
+      malt-build's -tn/--parseTaxonNames. When true (malt-build's own default)
+      MALT labels each reference by parsing organism names out of its FASTA
+      description as well as looking the accession up in -a2t, and takes the LCA
+      of every name it matches -- so a description that names a second organism
+      (a homolog it is "similar to", a cloning host, a lab in a clone name)
+      pulls the label to a coarser or unrelated node, and the same reference can
+      drive a species-level false positive for MALT and a genus-level one for
+      ngsLCA. Set false to label from the accession alone, which is what
+      ngsLCA's -acc2tax does, making the two backends comparable.
   ncbi_db:
     type: string
     description: >-

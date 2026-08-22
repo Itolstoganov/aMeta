@@ -24,10 +24,13 @@ log = snakemake.log_fmt_shell(stdout=False, stderr=True, append=True)
 
 accession2taxid = snakemake.params.accession2taxid
 max_heap = snakemake.params.max_heap
+# passed explicitly in both directions so the build log always records which
+# labelling produced the database (malt-build's own default is true)
+parse_taxon_names = "true" if snakemake.params.parse_taxon_names else "false"
 
 # The species-subset FASTA is produced by the shared Reference_Subset rule; here we
 # only build the MALT database from it.
 shell(
     "unset DISPLAY; "
-    "malt-build {max_heap} -i {snakemake.input.project_fasta} {a2t_option} {accession2taxid} -s DNA -t {snakemake.threads} -d {snakemake.output.db} {log}"
+    "malt-build {max_heap} -i {snakemake.input.project_fasta} {a2t_option} {accession2taxid} -s DNA -t {snakemake.threads} -d {snakemake.output.db} -tn {parse_taxon_names} {log}"
 )
