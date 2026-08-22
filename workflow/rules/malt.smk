@@ -1,3 +1,26 @@
+rule Malt_Acc2Taxa:
+    """Convert NCBI's accession2taxid into the two-column form malt-build reads.
+
+    malt-build's -a2t parser takes field 1 of each line as the accession and
+    field 2 as the taxon id. NCBI's four-column nucl_gb.accession2taxid is not parsed correctly
+    """
+    output:
+        acc2taxa="results/MALT_DB/acc2taxa.tsv",
+    input:
+        accession2taxid=config["malt_accession2taxid"],
+    log:
+        "logs/BUILD_MALT_DB/MALT_ACC2TAXA.log",
+    threads: 1
+    message:
+        "Malt_Acc2Taxa: CONVERTING {input.accession2taxid} TO malt-build -a2t FORMAT"
+    shell:
+        # -f passes an uncompressed file straight through, so this takes the
+        # NCBI file either as shipped (.gz) or already decompressed. The field 3
+        # test drops the header line and any malformed row.
+        "gzip -cdf {input.accession2taxid} | "
+        "awk -F'\t' '$3 ~ /^[0-9]+$/ {{ print $1 \"\t\" $3 }}' > {output.acc2taxa} 2> {log}"
+
+
 rule Build_Malt_DB:
     output:
         db=temp(directory("results/MALT_DB/maltDB.dat")),
@@ -5,8 +28,9 @@ rule Build_Malt_DB:
         # The FASTA subset is prepared by the shared Reference_Subset rule
         # (workflow/rules/align.smk); this rule only runs malt-build on it.
         project_fasta="results/REFERENCE_DB/library.project.fna",
+        # two-column form of config["malt_accession2taxid"]; see Malt_Acc2Taxa
+        acc2taxa="results/MALT_DB/acc2taxa.tsv",
     params:
-        accession2taxid=config["malt_accession2taxid"],
         max_heap=get_malt_heap_option(),
         # malt-build labels a reference by parsing organism names out of its
         # FASTA description as well as looking the accession up in -a2t, and
