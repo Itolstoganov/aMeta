@@ -85,12 +85,9 @@ properties:
     items:
       type: string
     description: >-
-      Alignment + taxonomy backend(s) to run. Each entry produces its own
-      independent authentication tree, abundance matrix and score heatmap.
-      'malt' uses MALT for both alignment and LCA taxonomy (rma6). Any other
-      label is an aligner + ngsLCA profiler and must equal aligner.name (e.g.
-      'strobealign'). When absent, the pipeline falls back to the deprecated
-      scalar 'taxonomic_profiler'.
+      Alignment + taxonomy backend(s) to run. 'malt' uses MALT for both alignment 
+      and LCA taxonomy (rma6). Any other label is an aligner + ngsLCA profiler 
+      and must equal aligner.name (e.g. 'strobealign'). 
   taxonomic_profiler:
     type: string
     enum:
@@ -127,15 +124,24 @@ properties:
           Commit hash or branch to build (github.com/<repo>/archive/<ref>.zip).
       args:
         type: string
-        default: "--ancient-dna --mcs=always -S 0.95 -r 30 -k 12"
+        default: "--ancient-dna --mcs=always -S 0.95 -r 30 -k 12 -N 20"
         description: >-
-          Extra command-line arguments passed to the aligner.
-      max_secondary:
+          Command-line arguments passed to the aligner.
+      min_aligned_bp:
         type: integer
         default: 20
         description: >-
-          Number of secondary alignments to retain (strobealign -N), so ngsLCA
-          can compute the LCA across all references a read maps to.
+          Discard alignments covering fewer than this many query bases. Local
+          aligners soft-clip, and ngsLCA scores identity over the aligned block
+          only, so short seed matches otherwise clear -simscorelow as full
+          species hits. 0 disables.
+      min_aligned_frac:
+        type: number
+        default: 0.8
+        description: >-
+          Discard alignments covering less than this fraction of the read
+          (aligned query bases / full read length). Together with min_aligned_bp
+          this is what MALT gets from "-at SemiGlobal -mpi 85". 0 disables.
   ngslca_args:
     type: string
     default: "-simscorelow 0.85 -simscorehigh 1.0"

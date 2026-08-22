@@ -142,8 +142,11 @@ if NGSLCA_PROFILERS:
 
         STROBEALIGN_REPO = _aligner.get("repo", "https://github.com/ksahlin/strobealign")
         STROBEALIGN_REF = _aligner.get("ref", "cc24cbd434f4ea7dd3c7fd344e3aaaf774cf4c13")
-        STROBEALIGN_ARGS = _aligner.get("args", "--adna -k 17 -s 13 --ry-len 8 -M 500 --ssw -L 32")
-        STROBEALIGN_MAX_SECONDARY = _aligner.get("max_secondary", 200)
+        STROBEALIGN_ARGS = _aligner.get(
+            "args", "--adna -k 17 -s 13 --ry-len 8 -M 500 --ssw -L 32 -N 200"
+        )
+        STROBEALIGN_MIN_ALIGNED_BP = _aligner.get("min_aligned_bp", 20)
+        STROBEALIGN_MIN_ALIGNED_FRAC = _aligner.get("min_aligned_frac", 0.8)
         STROBEALIGN_BIN = f"resources/bin/strobealign/{STROBEALIGN_REF}"
 
         rule Compile_Strobealign:
@@ -184,9 +187,8 @@ if NGSLCA_PROFILERS:
         rule Strobealign_Alignment:
             """Align trimmed reads with the compiled aDNA strobealign.
 
-            `-N` retains secondary alignments so ngsLCA can resolve the lowest common
-            ancestor across every reference a read maps to. Writes the canonical SAM
-            (accession|tax|taxid RNAME space) and a name-sorted BAM for ngsLCA.
+            The alignment stream is filtered by scripts/filter_alignments.awk to 
+            filter out short local alignments.
             """
             output:
                 sam="results/ALIGNMENT/{sample}.trimmed.sam.gz",
@@ -198,7 +200,9 @@ if NGSLCA_PROFILERS:
             params:
                 sam="results/ALIGNMENT/{sample}.trimmed.sam",
                 args=STROBEALIGN_ARGS,
-                max_secondary=STROBEALIGN_MAX_SECONDARY,
+                min_aligned_bp=STROBEALIGN_MIN_ALIGNED_BP,
+                min_aligned_frac=STROBEALIGN_MIN_ALIGNED_FRAC,
+                filter_awk=WORKFLOW_DIR / "scripts/filter_alignments.awk",
             threads: 20
             log:
                 "logs/ALIGNMENT/{sample}.log",
@@ -211,8 +215,10 @@ if NGSLCA_PROFILERS:
             message:
                 "Strobealign_Alignment: ALIGNING SAMPLE {input.fastq} WITH STROBEALIGN"
             shell:
-                "{input.binary} {params.args} -N {params.max_secondary} -t {threads} "
-                "{input.ref} {input.fastq} 2> {log} > {params.sam}; "
+                "{input.binary} {params.args} -t {threads} "
+                "{input.ref} {input.fastq} 2> {log} "
+                "| awk -v min_bp={params.min_aligned_bp} -v min_frac={params.min_aligned_frac} "
+                "-f {params.filter_awk} 2>> {log} > {params.sam}; "
                 "pigz -c {params.sam} > {output.sam}; "
                 "samtools sort -n -@ {threads} -o {output.namesorted_bam} {params.sam}; "
                 "rm {params.sam}"

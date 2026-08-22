@@ -33,8 +33,13 @@ aligner:
   name: strobealign
   repo: "https://github.com/ksahlin/strobealign"
   ref: "cc24cbd434f4ea7dd3c7fd344e3aaaf774cf4c13"
-  args: "--adna -k 17 -s 13 --ry-len 8 -M 500 --ssw -L 32 --secondary-seq"
-  max_secondary: 20
+  args: "--adna -k 17 -s 13 --ry-len 8 -M 500 --ssw -L 32 --secondary-seq -N 20"
+  # Discard alignments covering < min_aligned_bp query bases or < min_aligned_frac
+  # of the read. strobealign aligns locally and soft-clips; ngsLCA scores identity
+  # over the aligned block only, so short seed matches otherwise clear
+  # -simscorelow as full species hits. Set both to 0 to disable.
+  min_aligned_bp: 20
+  min_aligned_frac: 0.8
 
 # ngsLCA read-filtering args (aligner_ngslca path). Similarity-score mode;
 # 0.85 ~ MALT's -mpi 85. Edit-distance mode also works, e.g.
