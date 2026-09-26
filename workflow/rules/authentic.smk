@@ -161,7 +161,13 @@ rule Breadth_Of_Coverage:
         *config["envmodules"]["malt"],
     shell:
         "echo {params.ref_id} > {output.name_list}; "
-        "zgrep {params.ref_id} {input.sam} | uniq > {output.sam}; "
+        # Keep only records whose RNAME is ref_id.
+        # RNAMEs are compared up to the first "|" separator to accomodate the MALT alignment format.
+        "zcat -f {input.sam} | awk -F'\\t' -v ref=\"{params.ref_id}\" '"
+        "/^@SQ/ {{ split($2, sn, \"|\"); if (sn[1] == \"SN:\" ref) print; next }} "
+        "/^@/ {{ print; next }} "
+        "{{ split($3, rn, \"|\"); if (rn[1] == ref) print }}"
+        "' | uniq > {output.sam}; "
         "samtools view -bS {output.sam} > results/AUTHENTICATION/{wildcards.sample}/{wildcards.taxid}/{params.ref_id}.bam; "
         "samtools sort results/AUTHENTICATION/{wildcards.sample}/{wildcards.taxid}/{params.ref_id}.bam > {output.sorted_bam}; "
         "samtools index {output.sorted_bam}; "
@@ -262,6 +268,8 @@ rule Authentication_Score:
         maltextractlog="results/AUTHENTICATION/{sample}/{taxid}/MaltExtract_output/log.txt",
         name_list="results/AUTHENTICATION/{sample}/{taxid}/name_list.txt",
         scores="results/AUTHENTICATION/{sample}/{taxid}/PMDscores.txt",
+        breadth_of_coverage="results/AUTHENTICATION/{sample}/{taxid}/breadth_of_coverage",
+        read_length="results/AUTHENTICATION/{sample}/{taxid}/read_length.txt",
     output:
         scores="results/AUTHENTICATION/{sample}/{taxid}/authentication_scores.txt",
     message:
