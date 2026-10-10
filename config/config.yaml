@@ -18,6 +18,9 @@ malt_accession2taxid: resources/malt_acc2tax
 malt_parse_taxon_names: true
 ncbi_db: resources/ncbi
 
+# JVM max heap for malt-build and malt-run
+# malt_max_heap: "32G"
+
 # Breadth and depth of coverage filters    
 n_unique_kmers: 1000
 n_tax_reads: 200
