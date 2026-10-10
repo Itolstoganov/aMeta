@@ -4,6 +4,7 @@ import subprocess as sp
 from pathlib import Path
 from snakemake.utils import validate, logger, min_version
 from snakemake.common import __version__ as snakemake_version
+from snakemake.exceptions import WorkflowError
 import packaging.version as pv
 import pandas as pd
 import contextlib
@@ -103,6 +104,15 @@ if config["adapters"]["illumina"]:
 if config["adapters"]["nextera"]:
     ADAPTERS.append("CTGTCTCTTATA")
 
+##############################
+# Taxonomic profilers
+##############################
+
+PROFILERS = config.get("profilers") or ["malt"]
+_unknown = [p for p in PROFILERS if p != "malt"]
+if _unknown:
+    raise WorkflowError(f"Unknown profilers {_unknown}; supported: malt.")
+
 
 ##############################
 # Wildcard constraints
@@ -112,6 +122,7 @@ if config["adapters"]["nextera"]:
 #
 wildcard_constraints:
     sample=f"({'|'.join(samples['sample'].tolist())})",
+    profiler=f"({'|'.join(PROFILERS)})",
 
 
 ##############################
@@ -158,11 +169,15 @@ def mapdamage_input(wildcards):
 def authentication_input(wildcards):
     if not config["analyses"]["authentication"]:
         return []
-    return expand("results/AUTHENTICATION/.{sample}_done", sample=SAMPLES)
+    return expand(
+        "results/AUTHENTICATION/{profiler}/.{sample}_done",
+        profiler=PROFILERS,
+        sample=SAMPLES,
+    )
 
 
 def malt_input(wildcards):
-    if not config["analyses"]["malt"]:
+    if "malt" not in PROFILERS or not config["analyses"]["malt"]:
         return []
     return (
         "results/MALT_ABUNDANCE_MATRIX_SAM/malt_abundance_matrix_sam.txt",
@@ -170,7 +185,9 @@ def malt_input(wildcards):
     )
 
 def summary_input(wildcards):
-    return "results/overview_heatmap_scores.pdf"
+    return expand(
+        "results/overview_heatmap_scores.{profiler}.pdf", profiler=PROFILERS
+    )
 
 def krona_input(wildcards):
     if not config["analyses"]["krona"]:
@@ -199,13 +216,14 @@ def multiqc_input(wildcards):
 def aggregate_maltextract(wildcards):
     """Collect maltextract output directories"""
     checkpoint_output = checkpoints.Create_Sample_TaxID_Directories.get(
-        sample=wildcards.sample
+        sample=wildcards.sample, profiler=wildcards.profiler
     ).output[0]
     taxid = glob_wildcards(
         os.path.join(os.path.dirname(checkpoint_output), "{taxid,[0-9]+}")
     ).taxid
     return expand(
-        "results/AUTHENTICATION/{sample}/{taxid}/MaltExtract_output/log.txt",
+        "results/AUTHENTICATION/{profiler}/{sample}/{taxid}/MaltExtract_output/log.txt",
+        profiler=wildcards.profiler,
         sample=wildcards.sample,
         taxid=taxid,
     )
@@ -219,46 +237,54 @@ def _aggregate_utils(fmt, wildcards):
     )
     res = []
     checkpoint_output = checkpoints.Create_Sample_TaxID_Directories.get(
-        sample=wildcards.sample
+        sample=wildcards.sample, profiler=wildcards.profiler
     ).output[0]
     taxid = glob_wildcards(
         os.path.join(os.path.dirname(checkpoint_output), "{taxid,[0-9]+}")
     ).taxid
+    profiler = []
     sample = []
     refid = []
     taxid_out = []
     for tid in taxid:
-        wc = Wildcards(fromdict={"sample": wildcards.sample, "taxid": tid})
+        wc = Wildcards(
+            fromdict={
+                "profiler": wildcards.profiler,
+                "sample": wildcards.sample,
+                "taxid": tid,
+            }
+        )
         _refid = get_ref_id(wc)
         if _refid is not None and _refid != tid:
             refid.append(_refid)
             taxid_out.append(tid)
             sample.append(wildcards.sample)
+            profiler.append(wildcards.profiler)
     if len(refid) > 0:
-        res = expand(fmt, zip, sample=sample, taxid=taxid_out)
+        res = expand(fmt, zip, profiler=profiler, sample=sample, taxid=taxid_out)
     return res
 
 
 def aggregate_PMD(wildcards):
-    fmt = "results/AUTHENTICATION/{sample}/{taxid}/PMD_plot.frag.pdf"
+    fmt = "results/AUTHENTICATION/{profiler}/{sample}/{taxid}/PMD_plot.frag.pdf"
     return _aggregate_utils(fmt, wildcards)
 
 def aggregate_plots(wildcards):
-    fmt = "results/AUTHENTICATION/{sample}/{taxid}/authentic_Sample_{sample}.trimmed.rma6_TaxID_{taxid}.pdf"
+    fmt = "results/AUTHENTICATION/{profiler}/{sample}/{taxid}/authentic_Sample_{sample}.trimmed.rma6_TaxID_{taxid}.pdf"
     return _aggregate_utils(fmt, wildcards)
 
 def aggregate_scores(wildcards):
-    fmt = "results/AUTHENTICATION/{sample}/{taxid}/authentication_scores.txt"
+    fmt = "results/AUTHENTICATION/{profiler}/{sample}/{taxid}/authentication_scores.txt"
     return _aggregate_utils(fmt, wildcards)
 
 def aggregate_post(wildcards):
-    fmt = "results/AUTHENTICATION/{sample}/{taxid}/MaltExtract_output/analysis.RData"
+    fmt = "results/AUTHENTICATION/{profiler}/{sample}/{taxid}/MaltExtract_output/analysis.RData"
     return _aggregate_utils(fmt, wildcards)
 
 def get_ref_id(wildcards):
     """Return reference id for a given taxonomy id"""
     ref_id = wildcards.taxid
-    infile = f"results/AUTHENTICATION/{wildcards.sample}/{wildcards.taxid}/MaltExtract_output/default/readDist/{wildcards.sample}.trimmed.rma6_additionalNodeEntries.txt"
+    infile = f"results/AUTHENTICATION/{wildcards.profiler}/{wildcards.sample}/{wildcards.taxid}/MaltExtract_output/default/readDist/{wildcards.sample}.trimmed.rma6_additionalNodeEntries.txt"
     if not os.path.exists(infile):
         logger.debug(f"No such file {infile}; cannot extract refid")
         return None
@@ -276,4 +302,4 @@ def get_ref_id(wildcards):
 
 def format_maltextract_output_directory(wildcards):
     """Format MaltExtract output directory name"""
-    return f"results/AUTHENTICATION/{wildcards.sample}/{wildcards.taxid}/MaltExtract_output/"
+    return f"results/AUTHENTICATION/{wildcards.profiler}/{wildcards.sample}/{wildcards.taxid}/MaltExtract_output/"

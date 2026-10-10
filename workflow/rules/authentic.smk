@@ -10,12 +10,12 @@ checkpoint Create_Sample_TaxID_Directories:
     input:
         species="results/KRAKENUNIQ/{sample}/taxID.species",
     output:
-        done="results/AUTHENTICATION/{sample}/.extract_taxids_done",
+        done="results/AUTHENTICATION/{profiler}/{sample}/.extract_taxids_done",
     log:
-        "logs/CREATE_SAMPLE_TAXID_DIRECTORIES/{sample}.log",
+        "logs/CREATE_SAMPLE_TAXID_DIRECTORIES/{profiler}_{sample}.log",
     threads: 1
     params:
-        dir=lambda wildcards: f"results/AUTHENTICATION/{wildcards.sample}",
+        dir=lambda wildcards: f"results/AUTHENTICATION/{wildcards.profiler}/{wildcards.sample}",
     shell:
         "mkdir -p {params.dir}; "
         "while read taxid; do mkdir -p {params.dir}/$taxid; touch {params.dir}/$taxid/.done; done<{input.species};"
@@ -41,9 +41,9 @@ rule aggregate:
         aggregate_post,
         aggregate_scores,
     output:
-        "results/AUTHENTICATION/.{sample}_done",
+        "results/AUTHENTICATION/{profiler}/.{sample}_done",
     log:
-        "logs/AGGREGATE/{sample}.log",
+        "logs/AGGREGATE/{profiler}_{sample}.log",
     threads: 1
     shell:
         "touch {output}; "
@@ -52,13 +52,13 @@ rule aggregate:
 rule Make_Node_List:
     """Generate a list of species names for a taxonomic identifier"""
     input:
-        dirdone="results/AUTHENTICATION/{sample}/{taxid}/.done",
+        dirdone="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/.done",
     output:
-        node_list="results/AUTHENTICATION/{sample}/{taxid}/node_list.txt",
+        node_list="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/node_list.txt",
     params:
         tax_db=config["krakenuniq_db"],
     log:
-        "logs/MAKE_NODE_LIST/{sample}_{taxid}.log",
+        "logs/MAKE_NODE_LIST/{profiler}_{sample}_{taxid}.log",
     threads: 1
     shell:
         "awk -v var={wildcards.taxid} '{{ if($1==var) print $0 }}' {params.tax_db}/taxDB | cut -f3 > {output.node_list}"
@@ -75,18 +75,18 @@ checkpoint Malt_Extract:
     """
     input:
         rma6="results/MALT/{sample}.trimmed.rma6",
-        node_list="results/AUTHENTICATION/{sample}/{taxid}/node_list.txt",
+        node_list="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/node_list.txt",
         ncbi_db_tre=os.path.join(config["ncbi_db"], "ncbi.tre"),
         ncbi_db_map=os.path.join(config["ncbi_db"], "ncbi.map"),
     output:
-        maltextractlog="results/AUTHENTICATION/{sample}/{taxid}/MaltExtract_output/log.txt",
-        nodeentries="results/AUTHENTICATION/{sample}/{taxid}/MaltExtract_output/default/readDist/{sample}.trimmed.rma6_additionalNodeEntries.txt",
+        maltextractlog="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/MaltExtract_output/log.txt",
+        nodeentries="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/MaltExtract_output/default/readDist/{sample}.trimmed.rma6_additionalNodeEntries.txt",
     params:
         ncbi_db=lambda wildcards, input: os.path.dirname(input.ncbi_db_tre),
         extract=format_maltextract_output_directory,
     threads: 4
     log:
-        "logs/MALT_EXTRACT/{sample}_{taxid}.log",
+        "logs/MALT_EXTRACT/{profiler}_{sample}_{taxid}.log",
     conda:
         "../envs/malt.yaml"
     envmodules:
@@ -99,14 +99,14 @@ checkpoint Malt_Extract:
 
 rule Post_Processing:
     input:
-        node_list="results/AUTHENTICATION/{sample}/{taxid}/node_list.txt",
+        node_list="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/node_list.txt",
     output:
-        analysis="results/AUTHENTICATION/{sample}/{taxid}/MaltExtract_output/analysis.RData",
+        analysis="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/MaltExtract_output/analysis.RData",
     threads: 4
     params:
         extract=format_maltextract_output_directory,
     log:
-        "logs/POST_PROCESSING/{sample}_{taxid}.log",
+        "logs/POST_PROCESSING/{profiler}_{sample}_{taxid}.log",
     conda:
         "../envs/malt.yaml"
     message:
@@ -165,18 +165,18 @@ rule Breadth_Of_Coverage:
         sam="results/MALT/{sample}.trimmed.sam.gz",
         ref_fasta="results/REFERENCE_DB/library.project.fna",
         ref_fasta_fai="results/REFERENCE_DB/library.project.fna.fai",
-        nodeentries="results/AUTHENTICATION/{sample}/{taxid}/MaltExtract_output/default/readDist/{sample}.trimmed.rma6_additionalNodeEntries.txt",
+        nodeentries="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/MaltExtract_output/default/readDist/{sample}.trimmed.rma6_additionalNodeEntries.txt",
     output:
-        name_list="results/AUTHENTICATION/{sample}/{taxid}/name_list.txt",
-        sorted_bam="results/AUTHENTICATION/{sample}/{taxid}/sorted.bam",
-        breadth_of_coverage="results/AUTHENTICATION/{sample}/{taxid}/breadth_of_coverage",
-        sam=temporary("results/AUTHENTICATION/{sample}/{taxid}/{taxid}.sam"),
+        name_list="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/name_list.txt",
+        sorted_bam="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/sorted.bam",
+        breadth_of_coverage="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/breadth_of_coverage",
+        sam=temporary("results/AUTHENTICATION/{profiler}/{sample}/{taxid}/{taxid}.sam"),
     params:
         ref_id=get_ref_id,
     message:
         "Breadth_Of_Coverage: COMPUTING BREADTH OF COVERAGE, EXTRACTING REFERENCE SEQUENCE FOR VISUALIZING ALIGNMENTS WITH IGV"
     log:
-        "logs/BREADTH_OF_COVERAGE/{sample}_{taxid}.log",
+        "logs/BREADTH_OF_COVERAGE/{profiler}_{sample}_{taxid}.log",
     threads: 1
     conda:
         "../envs/malt.yaml"
@@ -191,23 +191,23 @@ rule Breadth_Of_Coverage:
         "/^@/ {{ print; next }} "
         "{{ split($3, rn, \"|\"); if (rn[1] == ref) print }}"
         "' | uniq > {output.sam}; "
-        "samtools view -bS {output.sam} > results/AUTHENTICATION/{wildcards.sample}/{wildcards.taxid}/{params.ref_id}.bam; "
-        "samtools sort results/AUTHENTICATION/{wildcards.sample}/{wildcards.taxid}/{params.ref_id}.bam > {output.sorted_bam}; "
+        "samtools view -bS {output.sam} > results/AUTHENTICATION/{wildcards.profiler}/{wildcards.sample}/{wildcards.taxid}/{params.ref_id}.bam; "
+        "samtools sort results/AUTHENTICATION/{wildcards.profiler}/{wildcards.sample}/{wildcards.taxid}/{params.ref_id}.bam > {output.sorted_bam}; "
         "samtools index {output.sorted_bam}; "
         "samtools depth -a {output.sorted_bam} > {output.breadth_of_coverage}; "
         "grep -w -f {output.name_list} {input.ref_fasta_fai} | awk '{{printf(\"%s:1-%s\\n\", $1, $2)}}' > {output.name_list}.regions; "
-        "samtools faidx {input.ref_fasta} -r {output.name_list}.regions -o results/AUTHENTICATION/{wildcards.sample}/{wildcards.taxid}/{params.ref_id}.fasta"
+        "samtools faidx {input.ref_fasta} -r {output.name_list}.regions -o results/AUTHENTICATION/{wildcards.profiler}/{wildcards.sample}/{wildcards.taxid}/{params.ref_id}.fasta"
 
 
 rule Read_Length_Distribution:
     input:
-        bam="results/AUTHENTICATION/{sample}/{taxid}/sorted.bam",
+        bam="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/sorted.bam",
     output:
-        distribution="results/AUTHENTICATION/{sample}/{taxid}/read_length.txt",
+        distribution="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/read_length.txt",
     message:
         "Read_Length_Distribution: COMPUTING READ LENGTH DISTRIBUTION"
     log:
-        "logs/READ_LENGTH_DISTRIBUTION/{sample}_{taxid}.log",
+        "logs/READ_LENGTH_DISTRIBUTION/{profiler}_{sample}_{taxid}.log",
     threads: 1
     conda:
         "../envs/malt.yaml"
@@ -219,13 +219,13 @@ rule Read_Length_Distribution:
 
 rule PMD_scores:
     input:
-        bam="results/AUTHENTICATION/{sample}/{taxid}/sorted.bam",
+        bam="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/sorted.bam",
     output:
-        scores="results/AUTHENTICATION/{sample}/{taxid}/PMDscores.txt",
+        scores="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/PMDscores.txt",
     message:
         "PMD_scores: COMPUTING PMD SCORES"
     log:
-        "logs/PMD_SCORES/{sample}_{taxid}.log",
+        "logs/PMD_SCORES/{profiler}_{sample}_{taxid}.log",
     threads: 1
     conda:
         "../envs/malt.yaml"
@@ -237,22 +237,22 @@ rule PMD_scores:
 
 rule Authentication_Plots:
     input:
-        dir="results/AUTHENTICATION/{sample}/{taxid}",
-        node_list="results/AUTHENTICATION/{sample}/{taxid}/node_list.txt",
-        distribution="results/AUTHENTICATION/{sample}/{taxid}/read_length.txt",
-        scores="results/AUTHENTICATION/{sample}/{taxid}/PMDscores.txt",
-        breadth_of_coverage="results/AUTHENTICATION/{sample}/{taxid}/breadth_of_coverage",
+        dir="results/AUTHENTICATION/{profiler}/{sample}/{taxid}",
+        node_list="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/node_list.txt",
+        distribution="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/read_length.txt",
+        scores="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/PMDscores.txt",
+        breadth_of_coverage="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/breadth_of_coverage",
     output:
-        pdf="results/AUTHENTICATION_PLOTS_PDF/authentic_Sample_{sample}.trimmed.rma6_TaxID_{taxid}.pdf",
-        png="results/AUTHENTICATION_PLOTS_PNG/authentic_Sample_{sample}.trimmed.rma6_TaxID_{taxid}.png",
-        pdf_plot="results/AUTHENTICATION/{sample}/{taxid}/authentic_Sample_{sample}.trimmed.rma6_TaxID_{taxid}.pdf",
-        png_plot="results/AUTHENTICATION/{sample}/{taxid}/authentic_Sample_{sample}.trimmed.rma6_TaxID_{taxid}.png",
+        pdf="results/AUTHENTICATION_PLOTS_PDF/{profiler}/authentic_Sample_{sample}.trimmed.rma6_TaxID_{taxid}.pdf",
+        png="results/AUTHENTICATION_PLOTS_PNG/{profiler}/authentic_Sample_{sample}.trimmed.rma6_TaxID_{taxid}.png",
+        pdf_plot="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/authentic_Sample_{sample}.trimmed.rma6_TaxID_{taxid}.pdf",
+        png_plot="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/authentic_Sample_{sample}.trimmed.rma6_TaxID_{taxid}.png",
     params:
         exe=WORKFLOW_DIR / "scripts/authentic.R",
     message:
         "Authentication_Plots: MAKING AUTHENTICATION AND VALIDATION PLOTS"
     log:
-        "logs/AUTHENTICATION_PLOTS/{sample}_{taxid}.log",
+        "logs/AUTHENTICATION_PLOTS/{profiler}_{sample}_{taxid}.log",
     threads: 1
     conda:
         "../envs/malt.yaml"
@@ -266,14 +266,14 @@ rule Authentication_Plots:
 
 rule Deamination:
     input:
-        bam="results/AUTHENTICATION/{sample}/{taxid}/sorted.bam",
+        bam="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/sorted.bam",
     output:
-        tmp="results/AUTHENTICATION/{sample}/{taxid}/PMD_temp.txt",
-        pmd="results/AUTHENTICATION/{sample}/{taxid}/PMD_plot.frag.pdf",
+        tmp="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/PMD_temp.txt",
+        pmd="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/PMD_plot.frag.pdf",
     message:
         "Deamination: INFERRING DEAMINATION PATTERN WITH PMDTOOLS"
     log:
-        "logs/DEAMINATION/{sample}_{taxid}.log",
+        "logs/DEAMINATION/{profiler}_{sample}_{taxid}.log",
     threads: 1
     conda:
         "../envs/malt.yaml"
@@ -281,26 +281,26 @@ rule Deamination:
         *config["envmodules"]["malt"],
     shell:
         "(samtools view {input.bam} || true) | pmdtools --platypus --number 2000000 > {output.tmp}; "
-        "cd results/AUTHENTICATION/{wildcards.sample}/{wildcards.taxid}; "
+        "cd results/AUTHENTICATION/{wildcards.profiler}/{wildcards.sample}/{wildcards.taxid}; "
         "R CMD BATCH $(which plotPMD); "
 
 
 rule Authentication_Score:
     input:
         rma6="results/MALT/{sample}.trimmed.rma6",
-        maltextractlog="results/AUTHENTICATION/{sample}/{taxid}/MaltExtract_output/log.txt",
-        name_list="results/AUTHENTICATION/{sample}/{taxid}/name_list.txt",
-        scores="results/AUTHENTICATION/{sample}/{taxid}/PMDscores.txt",
-        breadth_of_coverage="results/AUTHENTICATION/{sample}/{taxid}/breadth_of_coverage",
-        read_length="results/AUTHENTICATION/{sample}/{taxid}/read_length.txt",
+        maltextractlog="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/MaltExtract_output/log.txt",
+        name_list="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/name_list.txt",
+        scores="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/PMDscores.txt",
+        breadth_of_coverage="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/breadth_of_coverage",
+        read_length="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/read_length.txt",
     output:
-        scores="results/AUTHENTICATION/{sample}/{taxid}/authentication_scores.txt",
+        scores="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/authentication_scores.txt",
     message:
         "Authentication_Score: COMPUTING AUTHENTICATION SCORES"
     params:
         exe=WORKFLOW_DIR / "scripts/score.R",
     log:
-        "logs/AUTHENTICATION_SCORE/{sample}_{taxid}.log",
+        "logs/AUTHENTICATION_SCORE/{profiler}_{sample}_{taxid}.log",
     threads: 1
     conda:
         "../envs/malt.yaml"

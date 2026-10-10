@@ -21,6 +21,11 @@ ncbi_db: resources/ncbi
 # JVM max heap for malt-build and malt-run
 # malt_max_heap: "32G"
 
+# Alignment + taxonomy backend(s). Each profiler writes its own authentication
+# outputs under results/AUTHENTICATION/<profiler>/ and its own score heatmap.
+profilers:
+  - malt
+
 # Breadth and depth of coverage filters    
 n_unique_kmers: 1000
 n_tax_reads: 200

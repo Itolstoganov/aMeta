@@ -80,6 +80,13 @@ properties:
     type: string
     description: >-
       taxonomy from NCBI
+  profilers:
+    type: array
+    items:
+      type: string
+    default: ["malt"]
+    description: >-
+      Alignment + taxonomy backend(s) to run. 
   krona_db:
     type: string
     description: >-
