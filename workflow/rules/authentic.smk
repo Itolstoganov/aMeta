@@ -140,12 +140,12 @@ rule Samtools_Faidx:
 rule Project_Fasta_Faidx:
     """Index the project FASTA; Samtools_Faidx's ancient() input would keep the previous run's stale .fai."""
     output:
-        fai="results/MALT_DB/library.project.fna.fai",
+        fai="results/REFERENCE_DB/library.project.fna.fai",
     input:
-        fna="results/MALT_DB/library.project.fna",
+        fna="results/REFERENCE_DB/library.project.fna",
     threads: 1
     log:
-        "logs/BUILD_MALT_DB/PROJECT_FASTA_FAIDX.log",
+        "logs/REFERENCE_SUBSET/PROJECT_FASTA_FAIDX.log",
     conda:
         "../envs/samtools.yaml"
     envmodules:
@@ -160,11 +160,11 @@ ruleorder: Project_Fasta_Faidx > Samtools_Faidx
 
 
 rule Breadth_Of_Coverage:
-    # Reference sequences come from the Build_Malt_DB project subset, not the full nt FASTA
+    # Reference sequences come from the Reference_Subset output, not the full nt FASTA
     input:
         sam="results/MALT/{sample}.trimmed.sam.gz",
-        ref_fasta="results/MALT_DB/library.project.fna",
-        ref_fasta_fai="results/MALT_DB/library.project.fna.fai",
+        ref_fasta="results/REFERENCE_DB/library.project.fna",
+        ref_fasta_fai="results/REFERENCE_DB/library.project.fna.fai",
         nodeentries="results/AUTHENTICATION/{sample}/{taxid}/MaltExtract_output/default/readDist/{sample}.trimmed.rma6_additionalNodeEntries.txt",
     output:
         name_list="results/AUTHENTICATION/{sample}/{taxid}/name_list.txt",

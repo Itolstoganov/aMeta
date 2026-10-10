@@ -21,22 +21,14 @@ else:
 a2t_option = "-a2taxonomy" if minor <= 4 else "-a2t"
 
 log = snakemake.log_fmt_shell(stdout=False, stderr=True, append=True)
-options = snakemake.params.get("extra", "")
-unique_taxids = snakemake.input.unique_taxids
 
-seqid2taxid = snakemake.params.seqid2taxid
-nt_fasta = snakemake.params.nt_fasta
 accession2taxid = snakemake.input.acc2taxa
 parse_taxon_names = "true" if snakemake.params.parse_taxon_names else "false"
 max_heap = snakemake.params.max_heap
 
-output = snakemake
-
+# The species-subset FASTA is produced by the shared Reference_Subset rule; here we
+# only build the MALT database from it.
 shell(
-    "grep -wFf {unique_taxids} {seqid2taxid} > {snakemake.output.seqid2taxid_project}; "
-    "cut -f1 {snakemake.output.seqid2taxid_project} > {snakemake.output.seqids_project}; "
-    "grep -Ff {snakemake.output.seqids_project} {nt_fasta} | sed 's/>//g' > {snakemake.output.project_headers}; "
-    "seqtk subseq {nt_fasta} {snakemake.output.project_headers} > {snakemake.output.project_fasta} {log}; "
     "unset DISPLAY; "
-    "malt-build {max_heap} -i {snakemake.output.project_fasta} {a2t_option} {accession2taxid} -s DNA -t {snakemake.threads} -d {snakemake.output.db} -tn {parse_taxon_names} {log}"
+    "malt-build {max_heap} -i {snakemake.input.project_fasta} {a2t_option} {accession2taxid} -s DNA -t {snakemake.threads} -d {snakemake.output.db} -tn {parse_taxon_names} {log}"
 )

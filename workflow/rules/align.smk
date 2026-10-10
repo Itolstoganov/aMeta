@@ -55,3 +55,34 @@ rule Bowtie2_Alignment:
         """rm $(dirname {output.bam})/AlignedToBowtie2DB.noheader.sam;"""
         """rm $(dirname {output.bam})/AlignedToBowtie2DB.nodups.sam;"""
         """rm $(dirname {output.bam})/AlignedToBowtie2DB.sam;"""
+
+
+rule Reference_Subset:
+    """Subset the nt FASTA to the KrakenUniq-detected species."""
+    output:
+        seqid2taxid_project="results/REFERENCE_DB/seqid2taxid.project.map",
+        seqids_project="results/REFERENCE_DB/seqids.project",
+        project_headers="results/REFERENCE_DB/project.headers",
+        project_fasta="results/REFERENCE_DB/library.project.fna",
+    input:
+        unique_taxids="results/KRAKENUNIQ_ABUNDANCE_MATRIX/unique_species_taxid_list.txt",
+    params:
+        seqid2taxid=config["malt_seqid2taxid_db"],
+        nt_fasta=config["malt_nt_fasta"],
+    threads: 1
+    log:
+        "logs/REFERENCE_SUBSET/REFERENCE_SUBSET.log",
+    conda:
+        "../envs/aligner.yaml"
+    envmodules:
+        *config["envmodules"]["samtools"],
+    benchmark:
+        "benchmarks/REFERENCE_SUBSET/REFERENCE_SUBSET.benchmark.txt"
+    message:
+        "Reference_Subset: SUBSETTING NT FASTA TO KRAKENUNIQ-DETECTED SPECIES"
+    shell:
+        "grep -wFf {input.unique_taxids} {params.seqid2taxid} > {output.seqid2taxid_project}; "
+        "cut -f1 {output.seqid2taxid_project} > {output.seqids_project}; "
+        "grep -Ff {output.seqids_project} {params.nt_fasta} | sed 's/>//g' > {output.project_headers}; "
+        "seqtk subseq {params.nt_fasta} {output.project_headers} > {output.project_fasta} 2> {log}"
+
