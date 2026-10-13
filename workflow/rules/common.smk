@@ -234,8 +234,8 @@ def multiqc_input(wildcards):
     return d
 
 
-def aggregate_maltextract(wildcards):
-    """Collect maltextract output directories"""
+def aggregate_extract(wildcards):
+    """Collect the extraction outputs (Malt_Extract or NgsLCA_Extract)"""
     checkpoint_output = checkpoints.Create_Sample_TaxID_Directories.get(
         sample=wildcards.sample, profiler=wildcards.profiler
     ).output[0]
@@ -243,7 +243,7 @@ def aggregate_maltextract(wildcards):
         os.path.join(os.path.dirname(checkpoint_output), "{taxid,[0-9]+}")
     ).taxid
     return expand(
-        "results/AUTHENTICATION/{profiler}/{sample}/{taxid}/MaltExtract_output/log.txt",
+        "results/AUTHENTICATION/{profiler}/{sample}/{taxid}/Extract_output/log.txt",
         profiler=wildcards.profiler,
         sample=wildcards.sample,
         taxid=taxid,
@@ -299,13 +299,20 @@ def aggregate_scores(wildcards):
     return _aggregate_utils(fmt, wildcards)
 
 def aggregate_post(wildcards):
-    fmt = "results/AUTHENTICATION/{profiler}/{sample}/{taxid}/MaltExtract_output/analysis.RData"
+    fmt = "results/AUTHENTICATION/{profiler}/{sample}/{taxid}/Extract_output/analysis.RData"
     return _aggregate_utils(fmt, wildcards)
+
+def auth_alignment_sam(wildcards):
+    """SAM the authentication of a profiler uses: MALT's or the aligner's."""
+    if wildcards.profiler == "malt":
+        return f"results/MALT/{wildcards.sample}.trimmed.sam.gz"
+    return f"results/ALIGNMENT/{wildcards.profiler}/{wildcards.sample}.trimmed.sam.gz"
+
 
 def get_ref_id(wildcards):
     """Return reference id for a given taxonomy id"""
     ref_id = wildcards.taxid
-    infile = f"results/AUTHENTICATION/{wildcards.profiler}/{wildcards.sample}/{wildcards.taxid}/MaltExtract_output/default/readDist/{wildcards.sample}.trimmed.rma6_additionalNodeEntries.txt"
+    infile = f"results/AUTHENTICATION/{wildcards.profiler}/{wildcards.sample}/{wildcards.taxid}/Extract_output/default/readDist/{wildcards.sample}.trimmed.rma6_additionalNodeEntries.txt"
     if not os.path.exists(infile):
         logger.debug(f"No such file {infile}; cannot extract refid")
         return None
@@ -321,6 +328,6 @@ def get_ref_id(wildcards):
     return ref_id
 
 
-def format_maltextract_output_directory(wildcards):
-    """Format MaltExtract output directory name"""
-    return f"results/AUTHENTICATION/{wildcards.profiler}/{wildcards.sample}/{wildcards.taxid}/MaltExtract_output/"
+def format_extract_output_directory(wildcards):
+    """Format the extraction output directory name"""
+    return f"results/AUTHENTICATION/{wildcards.profiler}/{wildcards.sample}/{wildcards.taxid}/Extract_output/"

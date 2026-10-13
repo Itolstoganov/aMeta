@@ -26,16 +26,16 @@ rule aggregate:
     """aggregate rule: generate all sample/taxid combinations to
     generate targets.
 
-    The reference id depends on rule MaltExtract having been run,
-    which therefore needs to be triggered before the aggregate step.
-    However, beginning from an empty folder structure, the MaltExtract
-    output does not exist which means taxid cannot be converted to
-    refid. For this reason, also MaltExtract is a checkpoint, which
-    upon completion triggers reevaluation of the DAG.
+    The reference id depends on the extraction (Malt_Extract or
+    NgsLCA_Extract) having been run, which therefore needs to be triggered
+    before the aggregate step. However, beginning from an empty folder
+    structure, the extraction output does not exist which means taxid cannot
+    be converted to refid. For this reason, the extraction rules are
+    checkpoints, which upon completion trigger reevaluation of the DAG.
 
     """
     input:
-        aggregate_maltextract,
+        aggregate_extract,
         aggregate_PMD,
         aggregate_plots,
         aggregate_post,
@@ -70,7 +70,7 @@ checkpoint Malt_Extract:
     Downstream rules requires MaltExtract having been run.
     Therefore this rule is a checkpoint that will trigger reevaluation
     of downstream rules. The aggregation is performed by
-    aggregate_maltextract.
+    aggregate_extract.
 
     """
     wildcard_constraints:
@@ -81,11 +81,11 @@ checkpoint Malt_Extract:
         ncbi_db_tre=os.path.join(config["ncbi_db"], "ncbi.tre"),
         ncbi_db_map=os.path.join(config["ncbi_db"], "ncbi.map"),
     output:
-        maltextractlog="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/MaltExtract_output/log.txt",
-        nodeentries="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/MaltExtract_output/default/readDist/{sample}.trimmed.rma6_additionalNodeEntries.txt",
+        extract_log="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/Extract_output/log.txt",
+        nodeentries="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/Extract_output/default/readDist/{sample}.trimmed.rma6_additionalNodeEntries.txt",
     params:
         ncbi_db=lambda wildcards, input: os.path.dirname(input.ncbi_db_tre),
-        extract=format_maltextract_output_directory,
+        extract=format_extract_output_directory,
     threads: 4
     log:
         "logs/MALT_EXTRACT/{profiler}_{sample}_{taxid}.log",
@@ -99,14 +99,51 @@ checkpoint Malt_Extract:
         "time MaltExtract -Xmx32G -i {input.rma6} -f def_anc -o {params.extract} -r {params.ncbi_db} --reads --destackingOff --downSampOff --dupRemOff --threads {threads} --matches --minPI 85.0 --maxReadLength 0 --minComp 0.0 --meganSummary -t {input.node_list} -v 2> {log}"
 
 
+checkpoint NgsLCA_Extract:
+    """MaltExtract replacement for aligner + ngsLCA profilers.
+
+    Writes the Extract_output/ tables that score.R and authentic.R read, from
+    the aligner's name-sorted BAM and the ngsLCA assignment
+    (scripts/ngslca_extract.py). 
+    """
+    wildcard_constraints:
+        profiler=f"({'|'.join(SUPPORTED_ALIGNERS)})",
+    input:
+        bam="results/ALIGNMENT/{profiler}/{sample}.trimmed.namesorted.bam",
+        lca="results/NGSLCA/{profiler}/{sample}.lca",
+        node_list="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/node_list.txt",
+        ref_fasta="results/REFERENCE_DB/library.project.fna",
+        ref_fai="results/REFERENCE_DB/library.project.fna.fai",
+        seqid2taxid="results/REFERENCE_DB/seqid2taxid.project.map",
+    output:
+        extract_log="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/Extract_output/log.txt",
+        nodeentries="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/Extract_output/default/readDist/{sample}.trimmed.rma6_additionalNodeEntries.txt",
+    params:
+        extract=format_extract_output_directory,
+        exe=WORKFLOW_DIR / "scripts/ngslca_extract.py",
+        rma6_basename="{sample}.trimmed.rma6",
+    threads: 1
+    log:
+        "logs/NGSLCA_EXTRACT/{profiler}_{sample}_{taxid}.log",
+    conda:
+        "../envs/ngslca.yaml"
+    message:
+        "NgsLCA_Extract: BUILDING AUTHENTICATION TABLES FOR SAMPLE {input.bam} TAXID {wildcards.taxid}"
+    shell:
+        "python {params.exe} --bam {input.bam} --lca {input.lca} "
+        "--taxid {wildcards.taxid} --node-list {input.node_list} "
+        "--ref-fasta {input.ref_fasta} --seqid2taxid {input.seqid2taxid} "
+        "--out-dir {params.extract} --rma6-basename {params.rma6_basename} 2> {log}"
+
+
 rule Post_Processing:
     input:
         node_list="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/node_list.txt",
     output:
-        analysis="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/MaltExtract_output/analysis.RData",
+        analysis="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/Extract_output/analysis.RData",
     threads: 4
     params:
-        extract=format_maltextract_output_directory,
+        extract=format_extract_output_directory,
     log:
         "logs/POST_PROCESSING/{profiler}_{sample}_{taxid}.log",
     conda:
@@ -164,10 +201,10 @@ ruleorder: Project_Fasta_Faidx > Samtools_Faidx
 rule Breadth_Of_Coverage:
     # Reference sequences come from the Reference_Subset output, not the full nt FASTA
     input:
-        sam="results/MALT/{sample}.trimmed.sam.gz",
+        sam=auth_alignment_sam,
         ref_fasta="results/REFERENCE_DB/library.project.fna",
         ref_fasta_fai="results/REFERENCE_DB/library.project.fna.fai",
-        nodeentries="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/MaltExtract_output/default/readDist/{sample}.trimmed.rma6_additionalNodeEntries.txt",
+        nodeentries="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/Extract_output/default/readDist/{sample}.trimmed.rma6_additionalNodeEntries.txt",
     output:
         name_list="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/name_list.txt",
         sorted_bam="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/sorted.bam",
@@ -195,8 +232,17 @@ rule Breadth_Of_Coverage:
         "' | uniq > {output.sam}; "
         "samtools view -bS {output.sam} > results/AUTHENTICATION/{wildcards.profiler}/{wildcards.sample}/{wildcards.taxid}/{params.ref_id}.bam; "
         "samtools sort results/AUTHENTICATION/{wildcards.profiler}/{wildcards.sample}/{wildcards.taxid}/{params.ref_id}.bam > {output.sorted_bam}; "
+        # Aligner SAMs have no MD tags, which pmdtools needs.
+        "if [ \"{wildcards.profiler}\" != \"malt\" ]; then "
+        "D=$(dirname {output.sorted_bam}); "
+        "samtools faidx {input.ref_fasta} {params.ref_id} > $D/{params.ref_id}.calmd.fasta; "
+        "samtools faidx $D/{params.ref_id}.calmd.fasta; "
+        "samtools calmd -b {output.sorted_bam} $D/{params.ref_id}.calmd.fasta > $D/sorted.md.bam 2>> {log}; "
+        "mv $D/sorted.md.bam {output.sorted_bam}; "
+        "fi; "
         "samtools index {output.sorted_bam}; "
-        "samtools depth -a {output.sorted_bam} > {output.breadth_of_coverage}; "
+        # -g 0x100 also counts secondary alignments.
+        "samtools depth -a -g 0x100 {output.sorted_bam} > {output.breadth_of_coverage}; "
         "grep -w -f {output.name_list} {input.ref_fasta_fai} | awk '{{printf(\"%s:1-%s\\n\", $1, $2)}}' > {output.name_list}.regions; "
         "samtools faidx {input.ref_fasta} -r {output.name_list}.regions -o results/AUTHENTICATION/{wildcards.profiler}/{wildcards.sample}/{wildcards.taxid}/{params.ref_id}.fasta"
 
@@ -289,8 +335,7 @@ rule Deamination:
 
 rule Authentication_Score:
     input:
-        rma6="results/MALT/{sample}.trimmed.rma6",
-        maltextractlog="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/MaltExtract_output/log.txt",
+        extract_log="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/Extract_output/log.txt",
         name_list="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/name_list.txt",
         scores="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/PMDscores.txt",
         breadth_of_coverage="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/breadth_of_coverage",
@@ -301,6 +346,8 @@ rule Authentication_Score:
         "Authentication_Score: COMPUTING AUTHENTICATION SCORES"
     params:
         exe=WORKFLOW_DIR / "scripts/score.R",
+        # score.R only uses the rma6 file name, not the contents.
+        rma6_basename="{sample}.trimmed.rma6",
     log:
         "logs/AUTHENTICATION_SCORE/{profiler}_{sample}_{taxid}.log",
     threads: 1
@@ -309,4 +356,4 @@ rule Authentication_Score:
     envmodules:
         *config["envmodules"]["malt"],
     shell:
-        "Rscript {params.exe} {input.rma6} $(dirname {input.maltextractlog}) {input.name_list} $(dirname {input.name_list}) {input.scores} &> {log};"
+        "Rscript {params.exe} {params.rma6_basename} $(dirname {input.extract_log}) {input.name_list} $(dirname {input.name_list}) {input.scores} &> {log};"

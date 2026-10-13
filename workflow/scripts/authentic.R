@@ -13,7 +13,7 @@ par(mfrow=c(3,3))
 
 #HELP INFORMATION
 organism<-readLines(paste0(out_dir,"/node_list.txt")) #scientific name of oranism, extracted automatically from NCBI NT by taxID
-MaltExtract_output_path<-paste0(out_dir,"/MaltExtract_output") #path to MaltExtract output directory
+MaltExtract_output_path<-paste0(out_dir,"/Extract_output") #path to MaltExtract output directory
 
 #EDIT DISTANCE FOR ALL READS
 df<-read.delim(paste0(MaltExtract_output_path,"/default/editDistance/",RMA6,"_editDistance.txt"),header=TRUE,check.names=FALSE,row.names=1,sep="\t")
