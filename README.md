@@ -14,8 +14,8 @@ aMeta is a Snakemake workflow for identifying microbial sequences in ancient DNA
 - taxonomic sequence kmer-based classification with KrakenUniq
 - sequence alignment with Bowtie2 and screening for common microbial pathogens
 - deamination pattern analysis with MapDamage2
-- Lowest Common Ancestor (LCA) sequence alignment with Malt
-- authentication and validation of identified microbial species with MaltExtract
+- Lowest Common Ancestor (LCA) sequence alignment with Malt, and optionally with a read aligner ([strobealign](https://github.com/ksahlin/strobealign) by default) followed by [ngsLCA](https://github.com/miwipe/ngsLCA)
+- authentication and validation of identified microbial species with MaltExtract (or equivalent tables computed from the ngsLCA assignments)
 
 You can get overview of aMeta from the rule-graph (DAG) below:
 
@@ -107,6 +107,10 @@ Below is an example of `config.yaml`, here you will need to download a few datab
     # you do not need to change this line
     ncbi_db: resources/ncbi
 
+    # Alignment + LCA profiler(s), see "Taxonomic profilers" below
+    profilers:
+      - malt
+
     # Breadth and depth of coverage filters
     # default thresholds are very conservative, can be tuned by users
     n_unique_kmers: 1000
@@ -155,7 +159,7 @@ More details about running aMeta can be found in the step-by-step tutorial avail
 
 ## Main results of the workflow and their interpretation
 
-All output files of the workflow are located in `aMeta/results` directory. To get a quick overview of ancient microbes present in your samples you should check a heatmap in `results/overview_heatmap_scores.pdf`.
+All output files of the workflow are located in `aMeta/results` directory. To get a quick overview of ancient microbes present in your samples you should check a heatmap in `results/overview_heatmap_scores.<profiler>.pdf`, e.g. `results/overview_heatmap_scores.malt.pdf`.
 
 ![Overview](images/overview_heatmap_scores.png)
 
@@ -172,7 +176,7 @@ To visually examine the eight quality metrics
 7. number of assigned reads (depth of coverage),
 8. average nucleotide identity (ANI)
 
-corresponding to the numbers and colors of the heatmap, one can find them in `results/AUTHENTICATION/sampleID/taxID/authentic_Sample_sampleID.trimmed.rma6_TaxID_taxID.pdf` for each sample `sampleID` and each authenticated microbe `taxID`. An example of such quality metrics is shown below:
+corresponding to the numbers and colors of the heatmap, one can find them in `results/AUTHENTICATION/<profiler>/sampleID/taxID/authentic_Sample_sampleID.trimmed.rma6_TaxID_taxID.pdf` for each sample `sampleID` and each authenticated microbe `taxID`. An example of such quality metrics is shown below:
 
 ![aMeta_output](images/aMeta_output.png)
 
@@ -189,7 +193,7 @@ Finally, below we list locations and provide short comments for a few other usef
 - visualization of KrakenUniq microbial detection results for each sample `sampleID` is available at `results/KRAKENUNIQ/sampleID/taxonomy.krona.html`.
 ![Krona](images/Krona.png)
 - unfiltered KrakenUniq results for each sample `sampleID` can be found in `results/KRAKENUNIQ/sampleID/krakenuniq.output`, filtered with `n_unique_kmers` (breadth of coverage) and `n_tax_reads` (depth of coverage) can be found in `results/KRAKENUNIQ/sampleID/krakenuniq.output.filtered`, and the pathogenic subset of the filtered KrakenUniq results for each sample `sampleID` is available in `results/KRAKENUNIQ/sampleID/krakenuniq.output.pathogens`.
-- Malt microbial abundance matrix quantified from rma6- and sam-files can be found in `results/MALT_ABUNDANCE_MATRIX_RMA6/malt_abundance_matrix_rma6.txt` and `results/MALT_ABUNDANCE_MATRIX_SAM/malt_abundance_matrix_sam.txt`, respectively. These abundance matrices are complementary and can be compared with the KrakenUniq abundance matrix from `results/KRAKENUNIQ_ABUNDANCE_MATRIX/krakenuniq_abundance_matrix.txt` for a better intuition about microbial presence and abundance.
+- Malt microbial abundance matrix quantified from rma6- and sam-files can be found in `results/MALT_ABUNDANCE_MATRIX_RMA6/malt_abundance_matrix_rma6.txt` and `results/MALT_ABUNDANCE_MATRIX_SAM/malt_abundance_matrix_sam.txt`, respectively. These abundance matrices are complementary and can be compared with the KrakenUniq abundance matrix from `results/KRAKENUNIQ_ABUNDANCE_MATRIX/krakenuniq_abundance_matrix.txt` for a better intuition about microbial presence and abundance. For an aligner + ngsLCA profiler, the ngsLCA abundance matrix is in `results/NGSLCA_ABUNDANCE_MATRIX/<profiler>/ngslca_abundance_matrix.txt`.
 - all technical details on the quality of your data, adapter trimming, alignments etc. can be found in `results/MULTIQC/multiqc_report.html`.
 ![MultiQC](images/multiqc.png)
 
@@ -226,6 +230,31 @@ An example snippet that can optionally be added to the configuration file `confi
       nextera: false
       # custom is a list of adapter sequences
       custom: []
+
+### Taxonomic profilers
+
+The `profilers` list selects how reads are aligned and assigned to taxa for authentication. `malt` (the default) uses Malt for both. Any other profiler is a read aligner followed by ngsLCA; currently only `strobealign` is supported. Several profilers can run in the same analysis, each writing its own results under `results/AUTHENTICATION/<profiler>/` and its own score heatmap `results/overview_heatmap_scores.<profiler>.pdf`.
+
+An aligner profiler needs its settings under `aligners` and the ngsLCA read filter `ngslca_args`:
+
+    profilers:
+      - malt
+      - strobealign
+
+    aligners:
+      strobealign:
+        repo: "https://github.com/ksahlin/strobealign"
+        ref: "4be2dcc208fa54a8c8caed2146adf116f52c382c"
+        args: "--adna -k 17 -s 13 --ry-len 8 -M 1000 --ssw -L 30 --secondary-seq --st 0.9 -N -1"
+        # drop alignments covering fewer than min_aligned_bp read bases or less
+        # than min_aligned_frac of the read
+        min_aligned_bp: 20
+        min_aligned_frac: 0.8
+
+    # -simscorelow 0.85 roughly matches Malt's -mpi 85
+    ngslca_args: "-simscorelow 0.85 -simscorehigh 1.0"
+
+ngsLCA uses the NCBI taxonomy of the KrakenUniq database and `malt_accession2taxid` in NCBI's four-column `accession2taxid` format.
 
 
 ## Environment module configuration
