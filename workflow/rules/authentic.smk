@@ -73,6 +73,8 @@ checkpoint Malt_Extract:
     aggregate_maltextract.
 
     """
+    wildcard_constraints:
+        profiler="malt",
     input:
         rma6="results/MALT/{sample}.trimmed.rma6",
         node_list="results/AUTHENTICATION/{profiler}/{sample}/{taxid}/node_list.txt",

@@ -86,3 +86,82 @@ rule Reference_Subset:
         "grep -Ff {output.seqids_project} {params.nt_fasta} | sed 's/>//g' > {output.project_headers}; "
         "seqtk subseq {params.nt_fasta} {output.project_headers} > {output.project_fasta} 2> {log}"
 
+
+
+## ---------------------------------------------------------------------------
+## Read aligner rules for aligner + ngsLCA profilers.
+##
+## Settings come from config["aligners"][<aligner>]. To add an aligner, add its
+## rules here and its name to SUPPORTED_ALIGNERS in common.smk.
+## ---------------------------------------------------------------------------
+
+# Settings are read lazily, so runs without strobealign need no aligners.strobealign.
+def strobealign_setting(key):
+    return lambda wildcards: config["aligners"]["strobealign"][key]
+
+
+rule Compile_Strobealign:
+    """Build the Rust aDNA strobealign from a GitHub archive of the requested ref."""
+    output:
+        binary="resources/bin/strobealign/{ref}",
+    params:
+        repo=strobealign_setting("repo"),
+        ref="{ref}",
+    threads: 4
+    log:
+        "logs/COMPILE_STROBEALIGN/{ref}.log",
+    conda:
+        "../envs/strobealign-build.yaml"
+    benchmark:
+        "benchmarks/COMPILE_STROBEALIGN/{ref}.benchmark.txt"
+    message:
+        "Compile_Strobealign: BUILDING STROBEALIGN {params.ref} FROM SOURCE (cargo)"
+    shell:
+        "mkdir -p $(dirname {output.binary}) $(dirname {log}); "
+        "OUT=$(readlink -f {output.binary}); "
+        "LOG=$(readlink -f {log}); "
+        "tmp=$(mktemp -d); "
+        "trap 'rm -rf $tmp' EXIT; "
+        "wget -q {params.repo}/archive/{params.ref}.zip -O $tmp/strobealign.zip 2> $LOG; "
+        "unzip -q $tmp/strobealign.zip -d $tmp; "
+        "cd $tmp/strobealign-*; "
+        "cargo build -j {threads} >> $LOG 2>&1; "
+        "mv target/debug/strobealign $OUT"
+
+
+rule Strobealign_Alignment:
+    """Align trimmed reads with strobealign, dropping short local alignments
+    (scripts/filter_alignments.py)."""
+    output:
+        sam="results/ALIGNMENT/strobealign/{sample}.trimmed.sam.gz",
+        namesorted_bam="results/ALIGNMENT/strobealign/{sample}.trimmed.namesorted.bam",
+    input:
+        fastq="results/CUTADAPT_ADAPTER_TRIMMING/{sample}.trimmed.fastq.gz",
+        ref="results/REFERENCE_DB/library.project.fna",
+        binary=lambda wildcards: "resources/bin/strobealign/"
+        + config["aligners"]["strobealign"]["ref"],
+    params:
+        sam="results/ALIGNMENT/strobealign/{sample}.trimmed.sam",
+        args=strobealign_setting("args"),
+        min_aligned_bp=strobealign_setting("min_aligned_bp"),
+        min_aligned_frac=strobealign_setting("min_aligned_frac"),
+        filter_script=WORKFLOW_DIR / "scripts/filter_alignments.py",
+    threads: 20
+    log:
+        "logs/ALIGNMENT/strobealign/{sample}.log",
+    conda:
+        "../envs/aligner.yaml"
+    envmodules:
+        *config["envmodules"]["samtools"],
+    benchmark:
+        "benchmarks/ALIGNMENT/strobealign/{sample}.benchmark.txt"
+    message:
+        "Strobealign_Alignment: ALIGNING SAMPLE {input.fastq} WITH STROBEALIGN"
+    shell:
+        "{input.binary} {params.args} -t {threads} "
+        "{input.ref} {input.fastq} 2> {log} "
+        "| python {params.filter_script} {params.min_aligned_bp} {params.min_aligned_frac} "
+        "2>> {log} > {params.sam}; "
+        "pigz -c {params.sam} > {output.sam}; "
+        "samtools sort -n -@ {threads} -o {output.namesorted_bam} {params.sam}; "
+        "rm {params.sam}"

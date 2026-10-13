@@ -26,6 +26,19 @@ ncbi_db: resources/ncbi
 profilers:
   - malt
 
+# Settings of each aligner used by an aligner + ngsLCA profiler, keyed by the
+# profiler name, e.g. `profilers: [malt, strobealign]`.
+aligners:
+  # strobealign is compiled from the GitHub archive of repo@ref.
+  strobealign:
+    repo: "https://github.com/ksahlin/strobealign"
+    ref: "4be2dcc208fa54a8c8caed2146adf116f52c382c"
+    args: "--adna -k 17 -s 13 --ry-len 8 -M 1000 --ssw -L 30 --secondary-seq --st 0.9 -N -1"
+    # Drop alignments covering fewer than min_aligned_bp read bases or less than
+    # min_aligned_frac of the read. 0 disables the filter.
+    min_aligned_bp: 20
+    min_aligned_frac: 0.8
+
 # Breadth and depth of coverage filters    
 n_unique_kmers: 1000
 n_tax_reads: 200

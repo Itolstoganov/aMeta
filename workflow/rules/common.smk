@@ -109,9 +109,21 @@ if config["adapters"]["nextera"]:
 ##############################
 
 PROFILERS = config.get("profilers") or ["malt"]
-_unknown = [p for p in PROFILERS if p != "malt"]
+# Every non-malt profiler is an aligner + ngsLCA backend named after the aligner,
+# configured under config["aligners"][<name>].
+SUPPORTED_ALIGNERS = ["strobealign"]
+NGSLCA_PROFILERS = [p for p in PROFILERS if p != "malt"]
+_unknown = [p for p in NGSLCA_PROFILERS if p not in SUPPORTED_ALIGNERS]
 if _unknown:
-    raise WorkflowError(f"Unknown profilers {_unknown}; supported: malt.")
+    raise WorkflowError(
+        f"Unknown profilers {_unknown}; supported: malt, "
+        f"{', '.join(SUPPORTED_ALIGNERS)}."
+    )
+_unconfigured = [p for p in NGSLCA_PROFILERS if p not in config.get("aligners", {})]
+if _unconfigured:
+    raise WorkflowError(
+        f"Profilers {_unconfigured} need their settings under `aligners` in the config."
+    )
 
 
 ##############################

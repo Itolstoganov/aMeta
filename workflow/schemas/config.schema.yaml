@@ -87,6 +87,37 @@ properties:
     default: ["malt"]
     description: >-
       Alignment + taxonomy backend(s) to run. 
+  aligners:
+    type: object
+    default: {}
+    description: >-
+      Settings of each aligner used by an aligner + ngsLCA profiler, keyed by
+      the profiler name.
+    properties:
+      strobealign:
+        type: object
+        required: [repo, ref, args, min_aligned_bp, min_aligned_frac]
+        properties:
+          repo:
+            type: string
+            description: >-
+              Git repository whose GitHub archive is downloaded and compiled.
+          ref:
+            type: string
+            description: >-
+              Commit or branch to build.
+          args:
+            type: string
+            description: >-
+              Command-line arguments passed to strobealign.
+          min_aligned_bp:
+            type: integer
+            description: >-
+              Drop alignments covering fewer than this many read bases. 0 disables.
+          min_aligned_frac:
+            type: number
+            description: >-
+              Drop alignments covering less than this fraction of the read. 0 disables.
   krona_db:
     type: string
     description: >-
