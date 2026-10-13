@@ -95,7 +95,6 @@ rule Reference_Subset:
 ## rules here and its name to SUPPORTED_ALIGNERS in common.smk.
 ## ---------------------------------------------------------------------------
 
-# Settings are read lazily, so runs without strobealign need no aligners.strobealign.
 def strobealign_setting(key):
     return lambda wildcards: config["aligners"]["strobealign"][key]
 

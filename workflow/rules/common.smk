@@ -124,6 +124,8 @@ if _unconfigured:
     raise WorkflowError(
         f"Profilers {_unconfigured} need their settings under `aligners` in the config."
     )
+if NGSLCA_PROFILERS and "ngslca_args" not in config:
+    raise WorkflowError(f"Profilers {NGSLCA_PROFILERS} need `ngslca_args` in the config.")
 
 
 ##############################
@@ -146,6 +148,7 @@ def all_input(wildcards):
         "mapdamage": mapdamage_input(wildcards),
         "krakenuniq.krona": krona_input(wildcards),
         "malt.abundance": malt_input(wildcards),
+        "ngslca.abundance": ngslca_input(wildcards),
         "auth": authentication_input(wildcards),
         "summary": summary_input(wildcards),
     }
@@ -199,6 +202,12 @@ def malt_input(wildcards):
 def summary_input(wildcards):
     return expand(
         "results/overview_heatmap_scores.{profiler}.pdf", profiler=PROFILERS
+    )
+
+def ngslca_input(wildcards):
+    return expand(
+        "results/NGSLCA_ABUNDANCE_MATRIX/{profiler}/ngslca_abundance_matrix.txt",
+        profiler=NGSLCA_PROFILERS,
     )
 
 def krona_input(wildcards):

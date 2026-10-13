@@ -118,6 +118,10 @@ properties:
             type: number
             description: >-
               Drop alignments covering less than this fraction of the read. 0 disables.
+  ngslca_args:
+    type: string
+    description: >-
+      Read-filtering arguments passed to ngsLCA by aligner + ngsLCA profilers.
   krona_db:
     type: string
     description: >-

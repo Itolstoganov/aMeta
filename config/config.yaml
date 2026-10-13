@@ -39,6 +39,10 @@ aligners:
     min_aligned_bp: 20
     min_aligned_frac: 0.8
 
+# ngsLCA read-filtering arguments for aligner + ngsLCA profilers.
+# -simscorelow 0.85 roughly matches MALT's -mpi 85.
+ngslca_args: "-simscorelow 0.85 -simscorehigh 1.0"
+
 # Breadth and depth of coverage filters    
 n_unique_kmers: 1000
 n_tax_reads: 200
