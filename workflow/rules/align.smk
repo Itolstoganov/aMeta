@@ -128,6 +128,36 @@ rule Compile_Strobealign:
         "mv target/debug/strobealign $OUT"
 
 
+def strobealign_binary(wildcards):
+    return "resources/bin/strobealign/" + config["aligners"]["strobealign"]["ref"]
+
+
+rule Strobealign_Index:
+    """Write the strobemer index of the project reference once, for all samples.
+
+    The index depends on args and on the read-length profile, so both rules
+    pass the same args and read_length; --use-index refuses a mismatched index.
+    """
+    output:
+        "results/REFERENCE_DB/library.project.fna.sti",
+    input:
+        ref="results/REFERENCE_DB/library.project.fna",
+        binary=strobealign_binary,
+    params:
+        args=strobealign_setting("args"),
+        read_length=strobealign_setting("read_length"),
+    threads: 20
+    log:
+        "logs/STROBEALIGN_INDEX/STROBEALIGN_INDEX.log",
+    benchmark:
+        "benchmarks/STROBEALIGN_INDEX/STROBEALIGN_INDEX.benchmark.txt"
+    message:
+        "Strobealign_Index: INDEXING THE PROJECT REFERENCE WITH STROBEALIGN"
+    shell:
+        "{input.binary} {params.args} -r {params.read_length} -t {threads} "
+        "--create-index {input.ref} > {log} 2>&1"
+
+
 rule Strobealign_Alignment:
     """Align trimmed reads with strobealign, dropping short local alignments
     (scripts/filter_alignments.py)."""
@@ -137,11 +167,12 @@ rule Strobealign_Alignment:
     input:
         fastq="results/CUTADAPT_ADAPTER_TRIMMING/{sample}.trimmed.fastq.gz",
         ref="results/REFERENCE_DB/library.project.fna",
-        binary=lambda wildcards: "resources/bin/strobealign/"
-        + config["aligners"]["strobealign"]["ref"],
+        index="results/REFERENCE_DB/library.project.fna.sti",
+        binary=strobealign_binary,
     params:
         sam="results/ALIGNMENT/strobealign/{sample}.trimmed.sam",
         args=strobealign_setting("args"),
+        read_length=strobealign_setting("read_length"),
         min_aligned_bp=config["alignment_filter"]["min_aligned_bp"],
         min_aligned_frac=config["alignment_filter"]["min_aligned_frac"],
         filter_script=WORKFLOW_DIR / "scripts/filter_alignments.py",
@@ -157,8 +188,8 @@ rule Strobealign_Alignment:
     message:
         "Strobealign_Alignment: ALIGNING SAMPLE {input.fastq} WITH STROBEALIGN"
     shell:
-        "{input.binary} {params.args} -t {threads} "
-        "{input.ref} {input.fastq} 2> {log} "
+        "{input.binary} {params.args} -r {params.read_length} -t {threads} "
+        "--use-index {input.ref} {input.fastq} 2> {log} "
         "| python {params.filter_script} {params.min_aligned_bp} {params.min_aligned_frac} "
         "2>> {log} > {params.sam}; "
         "pigz -c {params.sam} > {output.sam}; "

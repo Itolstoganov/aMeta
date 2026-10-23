@@ -34,6 +34,9 @@ aligners:
     repo: "https://github.com/ksahlin/strobealign"
     ref: "4be2dcc208fa54a8c8caed2146adf116f52c382c"
     args: "--adna -k 17 -s 13 --ry-len 8 -M 1000 --ssw -L 30 --secondary-seq --st 0.9 -N -1"
+    # Mean read length after trimming; selects the parameter profile the
+    # strobealign index is built for.
+    read_length: 45
 
 # Drop alignments of any aligner covering fewer than min_aligned_bp read bases
 # or less than min_aligned_frac of the read. 0 disables the filter.

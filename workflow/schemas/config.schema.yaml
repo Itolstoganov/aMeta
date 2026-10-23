@@ -96,7 +96,7 @@ properties:
     properties:
       strobealign:
         type: object
-        required: [repo, ref, args]
+        required: [repo, ref, args, read_length]
         properties:
           repo:
             type: string
@@ -110,6 +110,11 @@ properties:
             type: string
             description: >-
               Command-line arguments passed to strobealign.
+          read_length:
+            type: integer
+            description: >-
+              Mean read length after trimming. It selects strobealign's
+              parameter profile, which the index is built for.
   alignment_filter:
     type: object
     default: {}
