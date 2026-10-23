@@ -252,3 +252,71 @@ rule Bowtie2_Profiler_Alignment:
         "pigz -c {params.sam} > {output.sam}; "
         "samtools sort -n -@ {threads} -o {output.namesorted_bam} {params.sam}; "
         "rm {params.sam}"
+
+
+def bwa_aln_setting(key, default=None):
+    return lambda wildcards: config["aligners"]["bwa_aln"].get(key, default)
+
+
+BWA_INDEX_EXT = [".amb", ".ann", ".bwt", ".pac", ".sa"]
+
+
+rule Bwa_Index:
+    """Index the project reference for the bwa aln + ngsLCA profiler."""
+    output:
+        ["results/REFERENCE_DB/library.project.fna" + ext for ext in BWA_INDEX_EXT],
+    input:
+        ref="results/REFERENCE_DB/library.project.fna",
+    threads: 1
+    log:
+        "logs/BWA_INDEX/BWA_INDEX.log",
+    conda:
+        "../envs/aligner.yaml"
+    benchmark:
+        "benchmarks/BWA_INDEX/BWA_INDEX.benchmark.txt"
+    message:
+        "Bwa_Index: INDEXING THE PROJECT REFERENCE WITH BWA"
+    shell:
+        "bwa index {input.ref} > {log} 2>&1"
+
+
+rule Bwa_Aln_Profiler_Alignment:
+    """Align trimmed reads with bwa aln + samse, writing each XA hit as a
+    secondary record (scripts/bwa_xa_to_secondary.py).
+
+    bwa aln aligns end to end, so terminal damage stays in the alignment.
+    """
+    output:
+        sam="results/ALIGNMENT/bwa_aln/{sample}.trimmed.sam.gz",
+        namesorted_bam="results/ALIGNMENT/bwa_aln/{sample}.trimmed.namesorted.bam",
+    input:
+        fastq="results/CUTADAPT_ADAPTER_TRIMMING/{sample}.trimmed.fastq.gz",
+        ref="results/REFERENCE_DB/library.project.fna",
+        index=rules.Bwa_Index.output,
+    params:
+        sai="results/ALIGNMENT/bwa_aln/{sample}.sai",
+        sam="results/ALIGNMENT/bwa_aln/{sample}.trimmed.sam",
+        args=bwa_aln_setting("args"),
+        max_hits=bwa_aln_setting("max_hits"),
+        min_aligned_bp=config["alignment_filter"]["min_aligned_bp"],
+        min_aligned_frac=config["alignment_filter"]["min_aligned_frac"],
+        xa_script=WORKFLOW_DIR / "scripts/bwa_xa_to_secondary.py",
+        filter_script=WORKFLOW_DIR / "scripts/filter_alignments.py",
+    threads: 20
+    log:
+        "logs/ALIGNMENT/bwa_aln/{sample}.log",
+    conda:
+        "../envs/aligner.yaml"
+    benchmark:
+        "benchmarks/ALIGNMENT/bwa_aln/{sample}.benchmark.txt"
+    message:
+        "Bwa_Aln_Profiler_Alignment: ALIGNING SAMPLE {input.fastq} WITH BWA ALN"
+    shell:
+        "bwa aln {params.args} -t {threads} {input.ref} {input.fastq} > {params.sai} 2> {log}; "
+        "bwa samse -n {params.max_hits} {input.ref} {params.sai} {input.fastq} 2>> {log} "
+        "| python {params.xa_script} {params.max_hits} 2>> {log} "
+        "| python {params.filter_script} {params.min_aligned_bp} {params.min_aligned_frac} "
+        "2>> {log} > {params.sam}; "
+        "pigz -c {params.sam} > {output.sam}; "
+        "samtools sort -n -@ {threads} -o {output.namesorted_bam} {params.sam}; "
+        "rm {params.sai} {params.sam}"

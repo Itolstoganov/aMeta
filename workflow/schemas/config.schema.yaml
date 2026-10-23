@@ -129,6 +129,19 @@ properties:
             description: >-
               Drop hits whose AS is more than this below the read's best AS.
               Unset keeps every hit bowtie2 reports.
+      bwa_aln:
+        type: object
+        required: [args, max_hits]
+        properties:
+          args:
+            type: string
+            description: >-
+              Command-line arguments passed to bwa aln.
+          max_hits:
+            type: integer
+            description: >-
+              bwa samse -n: alternative hits written per read. Reads with more
+              hits are dropped, since bwa then reports only one of them.
   alignment_filter:
     type: object
     default: {}
