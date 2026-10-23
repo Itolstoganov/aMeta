@@ -7,3 +7,4 @@ dependencies:
   - seqtk
   - pigz
   - pysam
+  - bowtie2

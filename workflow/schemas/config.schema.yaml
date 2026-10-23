@@ -115,6 +115,20 @@ properties:
             description: >-
               Mean read length after trimming. It selects strobealign's
               parameter profile, which the index is built for.
+      bowtie2:
+        type: object
+        required: [args]
+        properties:
+          args:
+            type: string
+            description: >-
+              Command-line arguments passed to bowtie2. Keep end-to-end mode and
+              set -k so that ngsLCA sees every hit of a read.
+          max_score_drop:
+            type: number
+            description: >-
+              Drop hits whose AS is more than this below the read's best AS.
+              Unset keeps every hit bowtie2 reports.
   alignment_filter:
     type: object
     default: {}

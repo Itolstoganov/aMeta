@@ -1,25 +1,36 @@
+BOWTIE2_INDEX_EXT = [".1.bt2l", ".2.bt2l", ".3.bt2l", ".4.bt2l", ".rev.1.bt2l", ".rev.2.bt2l"]
+
+
+def bowtie2_index(fasta):
+    """bowtie2-build output for `fasta`, written next to it with the FASTA path as prefix."""
+    return [fasta + ext for ext in BOWTIE2_INDEX_EXT]
+
+
 rule Bowtie2_Index:
+    """Index a FASTA for bowtie2: bowtie2_db for the pathogen screen, and the
+    project reference for the bowtie2 + ngsLCA profiler."""
     output:
-        expand(
-            f"{config['bowtie2_db']}{{ext}}",
-            ext=[
-                ".1.bt2l",
-                ".2.bt2l",
-                ".3.bt2l",
-                ".4.bt2l",
-                ".rev.1.bt2l",
-                ".rev.2.bt2l",
-            ],
-        ),
+        bowtie2_index("{fasta}"),
     input:
-        ref=ancient(config["bowtie2_db"]),
+        ref=lambda wildcards: (
+            ancient(wildcards.fasta)
+            if wildcards.fasta == config["bowtie2_db"]
+            else wildcards.fasta
+        ),
+    wildcard_constraints:
+        fasta=r".+(?<!\.rev)",
     conda:
         "../envs/bowtie2.yaml"
     envmodules:
         *config["envmodules"]["bowtie2"],
-    threads: 1
+    # single-threaded for bowtie2_db to prioritize memory over runtime
+    threads: lambda wildcards: 1 if wildcards.fasta == config["bowtie2_db"] else 20
     log:
-        f"{config['bowtie2_db']}_BOWTIE2_BUILD.log",
+        "{fasta}_BOWTIE2_BUILD.log",
+    benchmark:
+        "{fasta}_BOWTIE2_BUILD.benchmark.txt"
+    message:
+        "Bowtie2_Index: INDEXING {input.ref} WITH BOWTIE2"
     shell:
         "bowtie2-build --large-index --threads {threads} {input.ref} {input.ref} > {log} 2>&1"
 
@@ -30,7 +41,7 @@ rule Bowtie2_Alignment:
         bai="results/BOWTIE2/{sample}/AlignedToBowtie2DB.bam.bai",
     input:
         fastq="results/CUTADAPT_ADAPTER_TRIMMING/{sample}.trimmed.fastq.gz",
-        db=rules.Bowtie2_Index.output,
+        db=bowtie2_index(config["bowtie2_db"]),
     params:
         BOWTIE2_DB=lambda wildcards, input: config["bowtie2_db"],
     threads: 10
@@ -192,6 +203,52 @@ rule Strobealign_Alignment:
         "--use-index {input.ref} {input.fastq} 2> {log} "
         "| python {params.filter_script} {params.min_aligned_bp} {params.min_aligned_frac} "
         "2>> {log} > {params.sam}; "
+        "pigz -c {params.sam} > {output.sam}; "
+        "samtools sort -n -@ {threads} -o {output.namesorted_bam} {params.sam}; "
+        "rm {params.sam}"
+
+
+def bowtie2_setting(key, default=None):
+    return lambda wildcards: config["aligners"]["bowtie2"].get(key, default)
+
+
+rule Bowtie2_Profiler_Alignment:
+    """Align trimmed reads with bowtie2 end-to-end, reporting up to -k hits per read.
+
+    End-to-end mode never soft-clips, so terminal damage stays in the alignment.
+    Hits more than max_score_drop below the read's best AS are dropped, as
+    strobealign's --st does for its secondary alignments.
+    """
+    output:
+        sam="results/ALIGNMENT/bowtie2/{sample}.trimmed.sam.gz",
+        namesorted_bam="results/ALIGNMENT/bowtie2/{sample}.trimmed.namesorted.bam",
+    input:
+        fastq="results/CUTADAPT_ADAPTER_TRIMMING/{sample}.trimmed.fastq.gz",
+        ref="results/REFERENCE_DB/library.project.fna",
+        index=bowtie2_index("results/REFERENCE_DB/library.project.fna"),
+    params:
+        sam="results/ALIGNMENT/bowtie2/{sample}.trimmed.sam",
+        args=bowtie2_setting("args"),
+        min_aligned_bp=config["alignment_filter"]["min_aligned_bp"],
+        min_aligned_frac=config["alignment_filter"]["min_aligned_frac"],
+        max_score_drop=bowtie2_setting("max_score_drop", ""),
+        filter_script=WORKFLOW_DIR / "scripts/filter_alignments.py",
+    threads: 20
+    log:
+        "logs/ALIGNMENT/bowtie2/{sample}.log",
+    conda:
+        "../envs/aligner.yaml"
+    envmodules:
+        *config["envmodules"]["bowtie2"],
+    benchmark:
+        "benchmarks/ALIGNMENT/bowtie2/{sample}.benchmark.txt"
+    message:
+        "Bowtie2_Profiler_Alignment: ALIGNING SAMPLE {input.fastq} WITH BOWTIE2"
+    shell:
+        "bowtie2 {params.args} --no-unal -p {threads} -x {input.ref} "
+        "-U {input.fastq} 2> {log} "
+        "| python {params.filter_script} {params.min_aligned_bp} {params.min_aligned_frac} "
+        "{params.max_score_drop} 2>> {log} > {params.sam}; "
         "pigz -c {params.sam} > {output.sam}; "
         "samtools sort -n -@ {threads} -o {output.namesorted_bam} {params.sam}; "
         "rm {params.sam}"

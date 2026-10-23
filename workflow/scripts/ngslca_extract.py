@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Produce MaltExtract-compatible authentication tables from strobealign + ngsLCA.
+"""Produce MaltExtract-compatible authentication tables from aligner + ngsLCA.
 
 This is the ngsLCA-path replacement for MEGAN's ``MaltExtract`` (which needs an
 ``.rma6``). For one (sample, taxid) it reads the aligner's name-sorted BAM plus the

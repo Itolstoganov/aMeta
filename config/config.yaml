@@ -37,6 +37,12 @@ aligners:
     # Mean read length after trimming; selects the parameter profile the
     # strobealign index is built for.
     read_length: 45
+  # bowtie2 aligns end-to-end, so terminal damage is never soft-clipped.
+  # -k reports up to that many hits per read for ngsLCA; max_score_drop keeps
+  # hits within that many AS points of the read's best (about one mismatch).
+  bowtie2:
+    args: "--very-sensitive -k 1000"
+    max_score_drop: 6
 
 # Drop alignments of any aligner covering fewer than min_aligned_bp read bases
 # or less than min_aligned_frac of the read. 0 disables the filter.
