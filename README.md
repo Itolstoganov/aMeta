@@ -235,27 +235,7 @@ An example snippet that can optionally be added to the configuration file `confi
 
 The `profilers` list selects how reads are aligned and assigned to taxa for authentication. `malt` (the default) uses Malt for both. Any other profiler is a read aligner followed by ngsLCA; currently only `strobealign` is supported. Several profilers can run in the same analysis, each writing its own results under `results/AUTHENTICATION/<profiler>/` and its own score heatmap `results/overview_heatmap_scores.<profiler>.pdf`.
 
-An aligner profiler needs its settings under `aligners` and the ngsLCA read filter `ngslca_args`:
-
-    profilers:
-      - malt
-      - strobealign
-
-    aligners:
-      strobealign:
-        repo: "https://github.com/ksahlin/strobealign"
-        ref: "4be2dcc208fa54a8c8caed2146adf116f52c382c"
-        args: "--adna -k 17 -s 13 --ry-len 8 -M 1000 --ssw -L 30 --secondary-seq --st 0.9 -N -1"
-        # drop alignments covering fewer than min_aligned_bp read bases or less
-        # than min_aligned_frac of the read
-        min_aligned_bp: 20
-        min_aligned_frac: 0.8
-
-    # -simscorelow 0.85 roughly matches Malt's -mpi 85
-    ngslca_args: "-simscorelow 0.85 -simscorehigh 1.0"
-
-ngsLCA uses the NCBI taxonomy of the KrakenUniq database and `malt_accession2taxid` in NCBI's four-column `accession2taxid` format.
-
+An aligner profiler needs its settings under `aligners` and the ngsLCA read filter `ngslca_args`. `alignment_filter` settings apply to every aligner.
 
 ## Environment module configuration
 

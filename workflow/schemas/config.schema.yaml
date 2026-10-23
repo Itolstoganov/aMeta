@@ -96,7 +96,7 @@ properties:
     properties:
       strobealign:
         type: object
-        required: [repo, ref, args, min_aligned_bp, min_aligned_frac]
+        required: [repo, ref, args]
         properties:
           repo:
             type: string
@@ -110,14 +110,22 @@ properties:
             type: string
             description: >-
               Command-line arguments passed to strobealign.
-          min_aligned_bp:
-            type: integer
-            description: >-
-              Drop alignments covering fewer than this many read bases. 0 disables.
-          min_aligned_frac:
-            type: number
-            description: >-
-              Drop alignments covering less than this fraction of the read. 0 disables.
+  alignment_filter:
+    type: object
+    default: {}
+    description: >-
+      Filter applied to the alignments of every aligner + ngsLCA profiler.
+    properties:
+      min_aligned_bp:
+        type: integer
+        default: 20
+        description: >-
+          Drop alignments covering fewer than this many read bases. 0 disables.
+      min_aligned_frac:
+        type: number
+        default: 0.8
+        description: >-
+          Drop alignments covering less than this fraction of the read. 0 disables.
   ngslca_args:
     type: string
     description: >-

@@ -36,8 +36,10 @@ aligners:
     repo: "https://github.com/ksahlin/strobealign"
     ref: "4be2dcc208fa54a8c8caed2146adf116f52c382c"
     args: "--adna -k 17 -s 13 --ry-len 8 -M 1000 --ssw -L 30 --secondary-seq --st 0.9 -N -1"
-    min_aligned_bp: 20
-    min_aligned_frac: 0.8
+
+alignment_filter:
+  min_aligned_bp: 20
+  min_aligned_frac: 0.8
 
 ngslca_args: "-simscorelow 0.85 -simscorehigh 1.0"
 

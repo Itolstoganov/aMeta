@@ -142,8 +142,8 @@ rule Strobealign_Alignment:
     params:
         sam="results/ALIGNMENT/strobealign/{sample}.trimmed.sam",
         args=strobealign_setting("args"),
-        min_aligned_bp=strobealign_setting("min_aligned_bp"),
-        min_aligned_frac=strobealign_setting("min_aligned_frac"),
+        min_aligned_bp=config["alignment_filter"]["min_aligned_bp"],
+        min_aligned_frac=config["alignment_filter"]["min_aligned_frac"],
         filter_script=WORKFLOW_DIR / "scripts/filter_alignments.py",
     threads: 20
     log:
