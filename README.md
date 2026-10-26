@@ -233,7 +233,7 @@ An example snippet that can optionally be added to the configuration file `confi
 
 ### Taxonomic profilers
 
-The `profilers` list selects how reads are aligned and assigned to taxa for authentication. `malt` (the default) uses Malt for both. Any other profiler is a read aligner followed by ngsLCA; `strobealign`, `bowtie2` and `BWA aln` are supported. Several profilers can run in the same analysis, each writing its own results under `results/AUTHENTICATION/<profiler>/` and its own score heatmap `results/overview_heatmap_scores.<profiler>.pdf`.
+The `profilers` list selects how reads are aligned and assigned to taxa for authentication. `malt` (the default) uses Malt for both. Any other profiler is a read aligner followed by ngsLCA; `strobealign`, `bowtie2`, `BWA aln` and `BWA mem` are supported. Several profilers can run in the same analysis, each writing its own results under `results/AUTHENTICATION/<profiler>/` and its own score heatmap `results/overview_heatmap_scores.<profiler>.pdf`.
 
 An aligner profiler needs its settings under `aligners` and the ngsLCA read filter `ngslca_args`. `alignment_filter` settings apply to every aligner.
 

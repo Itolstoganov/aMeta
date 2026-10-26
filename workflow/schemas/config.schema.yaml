@@ -142,6 +142,20 @@ properties:
             description: >-
               bwa samse -n: alternative hits written per read. Reads with more
               hits are dropped, since bwa then reports only one of them.
+      bwa_mem:
+        type: object
+        required: [args]
+        properties:
+          args:
+            type: string
+            description: >-
+              Command-line arguments passed to bwa mem. Keep -a so that ngsLCA
+              sees every hit of a read.
+          max_score_drop:
+            type: number
+            description: >-
+              Drop hits whose AS is more than this below the read's best AS.
+              Unset keeps every hit bwa mem reports.
   alignment_filter:
     type: object
     default: {}

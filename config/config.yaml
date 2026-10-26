@@ -46,6 +46,12 @@ aligners:
   bwa_aln:
     args: "-n 0.01 -o 2 -l 1024"
     max_hits: 1000
+  # -a reports every hit per read for ngsLCA; the shorter seeds (-k 17, default
+  # 19) and more reseeding (-r 2.5, default 1.5) suit short ancient reads.
+  # max_score_drop 5 is one mismatch (-A 1 -B 4).
+  bwa_mem:
+    args: "-a -k 17 -r 2.5"
+    max_score_drop: 5
 
 # Drop alignments of any aligner covering fewer than min_aligned_bp read bases
 # or less than min_aligned_frac of the read. 0 disables the filter.

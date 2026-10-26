@@ -262,7 +262,7 @@ BWA_INDEX_EXT = [".amb", ".ann", ".bwt", ".pac", ".sa"]
 
 
 rule Bwa_Index:
-    """Index the project reference for the bwa aln + ngsLCA profiler."""
+    """Index the project reference for the bwa aln and bwa mem + ngsLCA profilers."""
     output:
         ["results/REFERENCE_DB/library.project.fna" + ext for ext in BWA_INDEX_EXT],
     input:
@@ -320,3 +320,49 @@ rule Bwa_Aln_Profiler_Alignment:
         "pigz -c {params.sam} > {output.sam}; "
         "samtools sort -n -@ {threads} -o {output.namesorted_bam} {params.sam}; "
         "rm {params.sai} {params.sam}"
+
+
+def bwa_mem_setting(key, default=None):
+    return lambda wildcards: config["aligners"]["bwa_mem"].get(key, default)
+
+
+rule Bwa_Mem_Profiler_Alignment:
+    """Align trimmed reads with bwa mem, reporting every hit with -a.
+
+    bwa mem writes secondary records without SEQ and QUAL; they are copied from
+    the read's primary record (scripts/bwa_mem_secondary_seq.py) so that damage
+    can be read from them. Hits more than max_score_drop below the read's best
+    AS are dropped, as for bowtie2.
+    """
+    output:
+        sam="results/ALIGNMENT/bwa_mem/{sample}.trimmed.sam.gz",
+        namesorted_bam="results/ALIGNMENT/bwa_mem/{sample}.trimmed.namesorted.bam",
+    input:
+        fastq="results/CUTADAPT_ADAPTER_TRIMMING/{sample}.trimmed.fastq.gz",
+        ref="results/REFERENCE_DB/library.project.fna",
+        index=rules.Bwa_Index.output,
+    params:
+        sam="results/ALIGNMENT/bwa_mem/{sample}.trimmed.sam",
+        args=bwa_mem_setting("args"),
+        max_score_drop=bwa_mem_setting("max_score_drop", ""),
+        min_aligned_bp=config["alignment_filter"]["min_aligned_bp"],
+        min_aligned_frac=config["alignment_filter"]["min_aligned_frac"],
+        seq_script=WORKFLOW_DIR / "scripts/bwa_mem_secondary_seq.py",
+        filter_script=WORKFLOW_DIR / "scripts/filter_alignments.py",
+    threads: 20
+    log:
+        "logs/ALIGNMENT/bwa_mem/{sample}.log",
+    conda:
+        "../envs/aligner.yaml"
+    benchmark:
+        "benchmarks/ALIGNMENT/bwa_mem/{sample}.benchmark.txt"
+    message:
+        "Bwa_Mem_Profiler_Alignment: ALIGNING SAMPLE {input.fastq} WITH BWA MEM"
+    shell:
+        "bwa mem {params.args} -t {threads} {input.ref} {input.fastq} 2> {log} "
+        "| python {params.seq_script} 2>> {log} "
+        "| python {params.filter_script} {params.min_aligned_bp} {params.min_aligned_frac} "
+        "{params.max_score_drop} 2>> {log} > {params.sam}; "
+        "pigz -c {params.sam} > {output.sam}; "
+        "samtools sort -n -@ {threads} -o {output.namesorted_bam} {params.sam}; "
+        "rm {params.sam}"
